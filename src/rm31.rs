@@ -3,6 +3,8 @@ use core::fmt::Display;
 use num_traits::{ Zero, One };
 use std::ops::{ Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign };
 use std::convert::{ From, Into };
+use rand::distributions::{Distribution, Standard};
+use rand::Rng;
 //use num::CheckedAdd;
 
 pub const P: u32 = 0x7fffffff;
@@ -84,6 +86,8 @@ impl RF {
     }
 
     pub fn try_inverse(&self) -> Option<Self> {
+        // TODO: optimise using deferred reduction
+
         // From https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L188
         if self.is_zero() {
             return None;
@@ -98,15 +102,15 @@ impl RF {
 
         // Compute p1 ** 2147483645
         let p101 = p1.exp_power_of_2(2) * p1;
-        let p1111 = p101.square() * p101;
-        let p11111111 = p1111.exp_power_of_2(4) * p1111;
-        let p111111110000 = p11111111.exp_power_of_2(4);
+        let p1111 = p101.reduce().square() * p101;
+        let p11111111 = p1111.reduce().exp_power_of_2(4) * p1111;
+        let p111111110000 = p11111111.reduce().exp_power_of_2(4);
         let p111111111111 = p111111110000 * p1111;
-        let p1111111111111111 = p111111110000.exp_power_of_2(4) * p11111111;
-        let p1111111111111111111111111111 = p1111111111111111.exp_power_of_2(12) * p111111111111;
+        let p1111111111111111 = p111111110000.reduce().exp_power_of_2(4) * p11111111;
+        let p1111111111111111111111111111 = p1111111111111111.reduce().exp_power_of_2(12) * p111111111111;
         let p1111111111111111111111111111101 =
-            p1111111111111111111111111111.exp_power_of_2(3) * p101;
-        Some(p1111111111111111111111111111101)
+            p1111111111111111111111111111.reduce().exp_power_of_2(3) * p101;
+        Some(p1111111111111111111111111111101.reduce())
     }
 
     #[inline]
@@ -267,6 +271,18 @@ impl SubAssign for RF {
     #[inline]
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
+    }
+}
+
+impl Distribution<RF> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RF {
+        let threshold = u32::MAX - (u32::MAX % P);
+        loop {
+            let candidate = (rng.next_u32() >> 1) as u32;
+            if candidate < threshold {
+                return RF { val: (candidate % P) as u64 };
+            }
+        }
     }
 }
 
@@ -464,10 +480,13 @@ mod tests {
     fn test_inverse() {
         assert!(RF::new(0).try_inverse().is_none());
 
-        // TODO: figure out why this fails to calculate the inverse of 317002956
-        let a = RF::new(1234);
-        let a_inv = RF::try_inverse(&a).unwrap();
-        assert_eq!(a * a_inv, RF::new(1));
+        let test_cases = [1, 2, 3, 4, 1024, 317002956, 2342343242];
+
+        for t in test_cases {
+            let a = RF::new(t);
+            let a_inv = RF::try_inverse(&a).unwrap();
+            assert_eq!(a * a_inv, RF::new(1));
+        }
     }
 
     #[test]

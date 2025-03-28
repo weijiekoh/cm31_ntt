@@ -1,10 +1,14 @@
 /// Complex M31 field arithmetic.
 
-use crate::rm31::{ RF, reduce };
+use crate::rm31::{ RF, reduce, P };
 use std::ops::{ Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign };
 use core::fmt::Display;
 use std::convert::{ From, Into };
 use num_traits::Zero;
+use num_traits::identities::One;
+use num_traits::pow::Pow;
+use rand::distributions::{Distribution, Standard};
+use rand::Rng;
 
 #[derive(Copy, Clone, Debug)]
 pub struct CF {
@@ -13,8 +17,8 @@ pub struct CF {
 }
 
 impl CF {
-    pub const fn new(a: u32, b: u32) -> CF {
-        CF { a: RF::new(a), b: RF::new(b) }
+    pub const fn new(real: u32, imag: u32) -> CF {
+        CF { a: RF::new(real), b: RF::new(imag) }
     }
 
     pub const fn real(self) -> RF {
@@ -32,11 +36,22 @@ impl CF {
         }
     }
 
-    fn try_inverse(&self) -> Option<Self> {
+    /*
+    pub fn add_base_f(self, f: RF) -> CF {
+        // TODO: check if this is correct
+        CF { 
+            a: self.real() + f,
+            b: self.imag(),
+        }
+    }
+    */
+
+    pub fn try_inverse(&self) -> Option<Self> {
         if self.a.val == 0 && self.b.val == 0 {
             return None;
         }
 
+        // TODO: optimise by deferring reduction.
         let a2b2 = (self.a * self.a + self.b * self.b).reduce();
         if a2b2.is_zero() {
             return None;
@@ -50,6 +65,56 @@ impl CF {
 
         let result = a_neg_b.mul_by_f(a2b2_inv);
         Some(result)
+    }
+
+    /// Returns the 8th root of unity. Since there are 4 options for this value, select the one you
+    /// want using the input `i`.
+    /// The 8th root of unity should be (+-2^15, +-2^15)
+    /// Let v = 2^15
+    /// The options denoted by `i` are:
+    /// 0. ( v,  v)
+    /// 1. ( v, -v)
+    /// 2. (-v,  v)
+    /// 3. (-v, -v)
+    pub fn root_of_unity_8(i: u32) -> Result<CF, String> {
+        assert!(i < 4);
+        let v = 2u32.pow(15);
+        let neg_v = P - v;
+        // i = 0: (v, v)
+        // i = 1: (v, -v)
+        // i = 2: (-v, v)
+        // i = 3: (-v, -v)
+        if i == 0 {
+            return Ok(CF::new(v, v));
+        }
+        if i == 1 {
+            return Ok(CF::new(v, neg_v));
+        }
+        if i == 2 {
+            return Ok(CF::new(neg_v, v));
+        }
+        if i == 3 {
+            return Ok(CF::new(neg_v, neg_v));
+        }
+        panic!("i must be 0, 1, 2 or 3");
+    }
+}
+
+impl Zero for CF {
+    #[inline]
+    fn zero() -> CF {
+        CF::new(0, 0)
+    }
+    #[inline]
+    fn is_zero(&self) -> bool {
+        self.a.is_zero() && self.b.is_zero()
+    }
+}
+
+impl One for CF {
+    #[inline]
+    fn one() -> CF {
+        CF::new(1, 0)
     }
 }
 
@@ -86,7 +151,7 @@ impl Add for CF {
         let c = rhs.a;
         let d = rhs.b;
 
-        CF { a: a + c, b: b + d }
+        CF { a: (a + c).reduce(), b: (b + d).reduce() }
     }
 }
 
@@ -107,7 +172,7 @@ impl Sub for CF {
         let c = rhs.a;
         let d = rhs.b;
 
-        CF { a: a - c, b: b - d }
+        CF { a: (a - c).reduce(), b: (b - d).reduce() }
     }
 }
 
@@ -123,17 +188,21 @@ impl Mul for CF {
 
     #[inline]
     fn mul(self, rhs: Self) -> Self::Output {
+        // TODO: optimise by deferring reduction. (One must be very careful when doing so.)
+        // To do so we need add_without_reduction and mul_without_reduction functions, and also
+        // prove that the results remain within bounds, and do a final reduction on the final
+        // result (real, imag).
         let a = self.a;
         let b = self.b;
         let c = rhs.a;
         let d = rhs.b;
 
-        let ac = a * c;
-        let bd = b * d;
+        let ac = (a * c).reduce();
+        let bd = (b * d).reduce();
         let real = ac - bd;
-        let imag = (a + b) * (c + d) - ac - bd;
+        let imag = ((a + b).reduce() * (c + d).reduce() - ac).reduce() - bd;
 
-        CF { a: real, b: imag }
+        CF { a: real.reduce(), b: imag.reduce() }
     }
 }
 
@@ -168,16 +237,54 @@ impl Display for CF {
     }
 }
 
+impl Pow<usize> for CF {
+    type Output = CF;
+
+    #[inline]
+    fn pow(self, exp: usize) -> Self::Output {
+        let mut result = CF::one();
+        let mut base = self;
+        let mut exp = exp;
+        while exp > 0 {
+            if exp % 2 == 1 {
+                result *= base;
+            }
+            base *= base;
+            exp /= 2;
+        }
+        result
+    }
+}
+
+impl Distribution<CF> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CF {
+        CF {
+            a: rng.r#gen(),
+            b: rng.r#gen(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::m31::P;
+    use rand::RngCore;
+    use rand_chacha::ChaCha8Rng;
+    use rand_chacha::rand_core::SeedableRng;
+
 
     #[test]
     fn test_new() {
         assert_eq!(CF::new(0, 0).a.val, 0);
         assert_eq!(CF::new(1, 0).a.val, 1);
         assert_eq!(CF::new(0, 1).b.val, 1);
+    }
+
+    #[test]
+    fn test_one() {
+        assert_eq!(CF::one().a.val, 1);
+        assert_eq!(CF::one().b.val, 0);
     }
 
     #[test]
@@ -218,9 +325,52 @@ mod tests {
 
     #[test]
     fn test_inverse() {
-        let x = CF::new(3, 4);
-        let x_inv = CF::try_inverse(&x).unwrap();
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        for _ in 0..1024 {
+            let x: CF = rng.r#gen();
+            let x_inv = CF::try_inverse(&x).unwrap();
+            assert_eq!(x * x_inv, CF::new(1, 0));
+        }
+    }
 
-        assert_eq!(x * x_inv, CF::new(1, 0));
+    #[test]
+    fn test_pow() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        for _ in 0..128 {
+            let x: CF = rng.r#gen();
+            let mut r = CF::one();
+            for i in 0..1024 {
+                assert_eq!(r, x.pow(i));
+                r *= x;
+            }
+        }
+    }
+
+    #[test]
+    fn test_w8() {
+        fn do_test(w8: CF) {
+            // w8 ^ 8 should equal 1, and not 1 for w8 ^ 1..7
+            let r1 = w8;
+            let r2 = w8 * w8;
+            let r3 = r2 * w8;
+            let r4 = r3 * w8;
+            let r5 = r4 * w8;
+            let r6 = r5 * w8;
+            let r7 = r6 * w8;
+            let r8 = r7 * w8;
+
+            let one = CF::one();
+            assert_ne!(r1, one);
+            assert_ne!(r2, one);
+            assert_ne!(r3, one);
+            assert_ne!(r4, one);
+            assert_ne!(r5, one);
+            assert_ne!(r6, one);
+            assert_ne!(r7, one);
+            assert_eq!(r8, one);
+        }
+        for i in 0..4 {
+            do_test(CF::root_of_unity_8(i).unwrap());
+        }
     }
 }
