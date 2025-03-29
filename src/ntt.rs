@@ -28,11 +28,11 @@ pub fn ntt_radix_8(f: [CF; 8], w: CF, w_neg_1: CF) -> [CF; 8] {
     let b0 = a0 + a2;
     let b1 = a0 + a2.mul_neg_1();
     let b2 = a1 + a3.mul_j();
-    let b3 = a1 + a3.mul_j_neg_1();
+    let b3 = a1 + a3.mul_j().mul_neg_1();
     let b4 = a4 + a6;
     let b5 = a4 + a6.mul_neg_1();
     let b6 = a5 + a7.mul_j();
-    let b7 = a5 + a7.mul_j_neg_1();
+    let b7 = a5 + a7.mul_j().mul_neg_1();
 
     let b5_j = b5.mul_j();
 
@@ -199,8 +199,5 @@ pub mod tests {
 
         let v_j = v.mul_j();
         assert_eq!(v * j, v_j);
-
-        let v_j_neg_1 = v.mul_j_neg_1();
-        assert_eq!(v * j_neg_1, v_j_neg_1);
     }
 }

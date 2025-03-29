@@ -116,21 +116,6 @@ impl CF {
         debug_assert!(self.b.val < P_64);
         CF { a: RF::new(0) - self.b, b: self.a }
     }
-
-    #[inline]
-    pub fn mul_j_neg_1(self) -> Self {
-        let a = self.a;
-        let b = self.b;
-        let c = RF::new(0);
-        let d = RF::new(P - 1);
-
-        let ac = (a * c).reduce();
-        let bd = (b * d).reduce();
-        let real = ac - bd;
-        let imag = ((a + b).reduce() * (c + d).reduce() - ac).reduce() - bd;
-
-        CF { a: real.reduce(), b: imag.reduce() }
-    }
 }
 
 impl Zero for CF {
