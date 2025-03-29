@@ -50,7 +50,7 @@ impl F {
     }
 
     #[inline]
-    fn div_2exp_u64(&self, exp: u64) -> Self {
+    pub fn div_2exp_u64(&self, exp: u64) -> Self {
         // Adpated from https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L162
         let exp = (exp % 31) as u8;
         let left = self.val >> exp;
@@ -60,13 +60,13 @@ impl F {
     }
 
     #[inline]
-    fn square(&self) -> Self {
+    pub fn square(&self) -> Self {
         // From https://github.com/Plonky3/Plonky3/blob/main/field/src/field.rs
         self.clone() * self.clone()
     }
 
     #[inline]
-    fn exp_power_of_2(&self, power_log: usize) -> Self {
+    pub fn exp_power_of_2(&self, power_log: usize) -> Self {
         // From https://github.com/Plonky3/Plonky3/blob/main/field/src/field.rs
         let mut res = self.clone();
         for _ in 0..power_log {
@@ -75,7 +75,7 @@ impl F {
         res
     }
 
-    fn try_inverse(&self) -> Option<Self> {
+    pub fn try_inverse(&self) -> Option<Self> {
         // From https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L188
         if self.is_zero() {
             return None;

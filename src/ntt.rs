@@ -1,16 +1,13 @@
 use crate::cm31::CF;
 use crate::rm31::RF;
 use num_traits::Zero;
-use num_traits::One;
 use num_traits::pow::Pow;
 
-pub fn ntt_radix_8(f: [CF; 8]) -> [CF; 8] {
+/// A radix-8 NTT butterfly.
+// TODO: optimise by deferring reduction.
+pub fn ntt_radix_8(f: [CF; 8], w: CF, w_neg_1: CF) -> [CF; 8] {
     debug_assert_eq!(f.len(), 8);
     let mut res = [CF::zero(); 8];
-    let w = CF::root_of_unity_8(0).unwrap();
-    let j = w.pow(2);
-    let neg_1 = w.pow(4);
-    debug_assert_eq!(neg_1, CF::zero() - CF::one());
 
     // Refer to Yuval's Radix 8 DIT diagram.
     // 1st columm of black dots: a0-a8
@@ -19,36 +16,35 @@ pub fn ntt_radix_8(f: [CF; 8]) -> [CF; 8] {
 
     // Column 1
     let a0 = f[0] + f[4];
-    let a1 = f[0] + f[4] * neg_1;
+    let a1 = f[0] + f[4].mul_neg_1();
     let a2 = f[2] + f[6];
-    let a3 = f[2] + f[6] * neg_1;
+    let a3 = f[2] + f[6].mul_neg_1();
     let a4 = f[1] + f[5];
-    let a5 = f[1] + f[5] * neg_1;
+    let a5 = f[1] + f[5].mul_neg_1();
     let a6 = f[3] + f[7];
-    let a7 = f[3] + f[7] * neg_1;
+    let a7 = f[3] + f[7].mul_neg_1();
 
     // Column 2
     let b0 = a0 + a2;
-    let b1 = a0 + a2 * neg_1;
-    let b2 = a1 + a3 * j;
-    let b3 = a1 + a3 * j * neg_1;
+    let b1 = a0 + a2.mul_neg_1();
+    let b2 = a1 + a3.mul_j();
+    let b3 = a1 + a3.mul_j_neg_1();
     let b4 = a4 + a6;
-    let b5 = a4 + a6 * neg_1;
-    let b6 = a5 + a7 * j;
-    let b7 = a5 + a7 * j * neg_1;
+    let b5 = a4 + a6.mul_neg_1();
+    let b6 = a5 + a7.mul_j();
+    let b7 = a5 + a7.mul_j_neg_1();
 
-    let b5_j = b5 * j;
-    let w_neg_1 = w * neg_1;
+    let b5_j = b5.mul_j();
 
     // Column 3
     res[0] = b0 + b4;
-    res[4] = b0 + b4 * neg_1;
+    res[4] = b0 + b4.mul_neg_1();
     res[2] = b1 + b5_j;
-    res[6] = b1 + b5_j * neg_1;
+    res[6] = b1 + b5_j.mul_neg_1();
     res[1] = b2 + b6 * w;
     res[5] = b2 + b6 * w_neg_1;
-    res[3] = b3 + b7 * j * w;
-    res[7] = b3 + b7 * j * w_neg_1;
+    res[3] = b3 + b7.mul_j() * w;
+    res[7] = b3 + b7.mul_j() * w_neg_1;
 
     res
 }
@@ -89,30 +85,38 @@ pub fn naive_intt_radix_8(f: [CF; 8]) -> [CF; 8] {
     res
 }
 
-fn naive_poly_mul(f1: [CF; 4], f2: [CF; 4]) -> [CF; 7] {
-    let mut res = [CF::zero(); 7];
-    for i in 0..4 {
-        for j in 0..4 {
-            res[i + j] += f1[i] * f2[j];
-        }
-    }
-    res
-}
-
+#[cfg(test)]
 pub mod tests {
-    use crate::ntt::{ntt_radix_8, naive_poly_mul, naive_ntt_radix_8, naive_intt_radix_8};
+    use crate::ntt::{ntt_radix_8, naive_ntt_radix_8, naive_intt_radix_8};
     use crate::cm31::CF;
-    use crate::rm31::RF;
-    use num_traits::Zero;
-    use num_traits::One;
-    use num_traits::pow::Pow;
+    use num_traits::{Zero, Pow};
     use rand::Rng;
-    use rand::RngCore;
     use rand_chacha::ChaCha8Rng;
     use rand_chacha::rand_core::SeedableRng;
 
+    // Schoolbook multiplication
+    fn naive_poly_mul(f1: [CF; 4], f2: [CF; 4]) -> [CF; 7] {
+        let mut res = [CF::zero(); 7];
+        for i in 0..4 {
+            for j in 0..4 {
+                res[i + j] += f1[i] * f2[j];
+            }
+        }
+        res
+    }
+
+    #[test]
+    fn test_naive_poly_mul() {
+        let f1 = [CF::new(1, 0), CF::new(2, 0), CF::new(3, 0), CF::new(4, 0)];
+        let f3 = [CF::new(1, 0), CF::new(3, 0), CF::new(5, 0), CF::new(7, 0)];
+        let res = naive_poly_mul(f1, f3);
+        let expected = [CF::new(1, 0), CF::new(5, 0), CF::new(14, 0), CF::new(30, 0), CF::new(41, 0), CF::new(41, 0), CF::new(28, 0)];
+        assert_eq!(res, expected);
+    }
+
     #[test]
     fn test_naive_ntt() {
+        // Test that the naive NTT and inverse NTT functions are the opposite of each other.
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..128 {
             let mut f = [CF::zero(); 8];
@@ -129,6 +133,7 @@ pub mod tests {
 
     #[test]
     fn test_naive_ntt_by_property() {
+        // Test the correctness of the native NTT and inverse NTT functions.
         let mut rng = ChaCha8Rng::seed_from_u64(0);
 
         for _ in 0..128 {
@@ -165,6 +170,9 @@ pub mod tests {
 
     #[test]
     fn test_ntt_radix_8() {
+        // Test the radix-8 NTT butterfly.
+        let w = CF::root_of_unity_8(0).unwrap();
+        let w_neg_1 = w.mul_neg_1();
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..1024 {
             let mut poly = [CF::zero(); 8];
@@ -172,8 +180,27 @@ pub mod tests {
                 poly[j] = rng.r#gen();
             }
             let naive = naive_ntt_radix_8(poly);
-            let res = ntt_radix_8(poly);
+            let res = ntt_radix_8(poly, w, w_neg_1);
             assert_eq!(naive, res);
         }
+    }
+
+    #[test]
+    fn test_opts() {
+        // Test the optimized functions.
+        let w = CF::root_of_unity_8(0).unwrap();
+        let j = w.pow(2);
+        let neg_1 = w.pow(4);
+        let j_neg_1 = j * neg_1;
+
+        let v: CF = CF::new(0x12345678, 0x87654321);
+        let v_neg_1 = v.mul_neg_1();
+        assert_eq!(v * neg_1, v_neg_1);
+
+        let v_j = v.mul_j();
+        assert_eq!(v * j, v_j);
+
+        let v_j_neg_1 = v.mul_j_neg_1();
+        assert_eq!(v * j_neg_1, v_j_neg_1);
     }
 }

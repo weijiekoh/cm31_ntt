@@ -125,7 +125,7 @@ impl RF {
     }
 
     #[inline]
-    fn div_2exp_u64(&self, exp: u64) -> Self {
+    pub fn div_2exp_u64(&self, exp: u64) -> Self {
         // Adpated from https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L162
         let reduced = reduce(self.val);
         let exp = (exp % 31) as u8;
