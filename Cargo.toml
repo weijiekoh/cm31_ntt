@@ -7,6 +7,11 @@ edition = "2024"
 num-traits = "0.2.19"
 num = "0.4.3"
 rand = "0.8.5"
+criterion = "0.5.1"
 
 [dev-dependencies]
 rand_chacha = "0.3.1"
+
+[[bench]]
+name = "ntt"
+harness = false

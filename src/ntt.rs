@@ -191,7 +191,6 @@ pub mod tests {
         let w = CF::root_of_unity_8(0).unwrap();
         let j = w.pow(2);
         let neg_1 = w.pow(4);
-        let j_neg_1 = j * neg_1;
 
         let v: CF = CF::new(0x12345678, 0x87654321);
         let v_neg_1 = v.mul_neg_1();
