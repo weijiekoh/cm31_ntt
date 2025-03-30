@@ -20,5 +20,12 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("ntt_radix_8", |b| b.iter(|| ntt_radix_8(black_box(inputs), black_box(w), black_box(w_neg_1))));
 }
 
-criterion_group!(benches, criterion_benchmark);
+criterion_group!(
+    name = benches;
+    config = Criterion::default()
+        .sample_size(10000)
+        .warm_up_time(std::time::Duration::new(5,0))
+        .measurement_time(std::time::Duration::new(20,0));
+    targets = benchmark
+);
 criterion_main!(benches);
