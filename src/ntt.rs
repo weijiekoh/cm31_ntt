@@ -3,8 +3,31 @@ use crate::rm31::RF;
 use num_traits::Zero;
 use num_traits::pow::Pow;
 
+/*
+ * Notes on how to optimise the NTT to defer reduction
+ * There are 8 outputs, so let's look at each computation separately.
+ *
+ * res[0] = f[0] + f[4] + f[2] + f[6] + f[1] + f[5] + f[3] + f[7];
+ *   - Each CF addition involves two separate RF additions (a + c and b + d)
+ *     - Can we do these 8 pairs of additions without reduction, and then do a final reduction?
+ *        - Yes
+ *
+ * res[4] = f[0] + f[4] + f[2] + f[6] + ((f[1] + f[5]) + (f[3] + f[7])).mul_neg_1(); // where mul_neg_1 is just
+ *                                                             // real = P - real 
+ *                                                             // and imag = P - imag.
+ *   - Can we do mul_neg_1() on a CF in redundant form?
+ *      - Yes
+ *
+ * res[2] = a0 + a2.mul_neg_1() + (a4 + a6.mul_neg_1()).mul_j(); // where mul_j is real = P - imag
+ *                                                               // and imag = real
+ *
+ * ... and so on
+ */
+
 /// A radix-8 NTT butterfly.
 // TODO: optimise by deferring reduction.
+// TODO: if we assume that the inputs are already fully reduced, we can optimise Stage 1 as
+// mul_neg_1() can be replaced with 2 subtractions
 pub fn ntt_radix_8(f: [CF; 8], w: CF, w_neg_1: CF) -> [CF; 8] {
     debug_assert_eq!(f.len(), 8);
     let mut res = [CF::zero(); 8];
@@ -181,6 +204,7 @@ pub mod tests {
             }
             let naive = naive_ntt_radix_8(poly);
             let res = ntt_radix_8(poly, w, w_neg_1);
+
             assert_eq!(naive, res);
         }
     }

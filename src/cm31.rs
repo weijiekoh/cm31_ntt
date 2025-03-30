@@ -1,6 +1,6 @@
 /// Complex M31 field arithmetic.
 
-use crate::rm31::{ RF, reduce, P, P_64 };
+use crate::rm31::{ RF, reduce, P };
 use std::ops::{ Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign };
 use core::fmt::Display;
 use std::convert::{ From, Into };
@@ -101,20 +101,14 @@ impl CF {
 
     #[inline]
     pub fn mul_neg_1(self) -> Self {
-        // TODO: figure out if we can work with non-reduced values.
-        debug_assert!(self.a.val < P_64);
-        debug_assert!(self.b.val < P_64);
-        let c = RF::new(P - (self.a.val as u32));
-        let d = RF::new(P - (self.b.val as u32));
+        let c = self.a.neg();
+        let d = self.b.neg();
         CF { a: c, b: d }
     }
 
     #[inline]
     pub fn mul_j(self) -> Self {
-        // TODO: figure out if we can work with non-reduced values.
-        debug_assert!(self.a.val < P_64);
-        debug_assert!(self.b.val < P_64);
-        CF { a: RF::new(0) - self.b, b: self.a }
+        CF { a: self.b.neg(), b: self.a }
     }
 }
 
@@ -169,7 +163,7 @@ impl Add for CF {
         let c = rhs.a;
         let d = rhs.b;
 
-        CF { a: (a + c).reduce(), b: (b + d).reduce() }
+        CF { a: a + c, b: b + d }
     }
 }
 

@@ -9,7 +9,7 @@ use rand::Rng;
 
 pub const P: u32 = 0x7fffffff;
 pub const P_64: u64 = 0x7fffffff;
-pub const P2: u32 = 0xfffffffe;
+pub const P2: u64 = 0xfffffffe;
 pub const P3: u64 = 0x17ffffffd;
 pub const MASK: u64 = 0xffffffff;
 
@@ -238,11 +238,11 @@ impl Add for RF {
     #[inline]
     /// The output may not be fully reduced
     fn add(self, rhs: Self) -> Self::Output {
-        let tmp = self.val + rhs.val;
-        let msb = (tmp >> 32) & 1;
-        let tmp = 2 * msb + (tmp & MASK);
-        let msb = (tmp >> 32) & 1;
-        let tmp = 2 * msb + (tmp & MASK);
+        let mut tmp = self.val + rhs.val;
+        let mut msb = (tmp >> 32) & 1;
+        tmp = 2 * msb + (tmp & MASK);
+        msb = (tmp >> 32) & 1;
+        tmp = 2 * msb + (tmp & MASK);
         RF { val: tmp }
     }
 }
@@ -420,22 +420,25 @@ mod tests {
 
     #[test]
     fn test_neg() {
-        let vals = &[
-            RF::new(0),
-            RF::new(2),
-            RF::new(1234),
-            RF::new(P - 2),
-            RF::new(P - 1),
-            RF::new(P),
-            RF::new(P + 1),
-            RF::new(P + 2),
-            RF::new(P + 1234),
+        let vals: &[(u64, u64)] = &[
+            (0, 0),
+            (2, 0),
+            (1234, 0),
+            (P_64 - 1, 0),
+            (P_64 - 2, 0),
+            (P_64, 0),
+            (P_64 + 1, 0),
+            (P_64 + 2, 0),
+            (P_64 + 1234, 0),
+            (P_64 - 1, 1234),
         ];
 
         for v in vals {
-            let expected = (P_64 - v.val) % P_64;
-            let result = v.neg().val % P_64;
-            assert_eq!(expected, result);
+            let x = RF::new(v.0 as u32) + RF::new(v.1 as u32);
+            let n = x.neg().reduce();
+            let mut e = P_64 - ((v.0 + v.1) % P_64);
+            e = e % P_64;
+            assert_eq!(n.val, e);
         }
     }
 
@@ -501,5 +504,21 @@ mod tests {
     #[test]
     fn test_div_2exp_u64() {
         assert_eq!(RF::new(4096).div_2exp_u64(10), RF::new(4));
+    }
+
+    #[test]
+    fn test_add_without_reduce() {
+        let e_x = P_64 - 1;
+        let mut e_y = e_x;
+        let x = RF::new(P - 1);
+        let mut y = x;
+        for _ in 0..1024 {
+            y += x;
+            let reduced = y.reduce();
+            
+            e_y = (e_y + e_x) % P_64;
+
+            assert_eq!(reduced.val, e_y);
+        }
     }
 }
