@@ -7,7 +7,7 @@ use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::SeedableRng;
 
-fn criterion_benchmark(c: &mut Criterion) {
+fn benchmark(c: &mut Criterion) {
     let mut rng = ChaCha8Rng::seed_from_u64(0);
     let mut inputs = [CF::zero(); 8];
     for i in 0..8 {
