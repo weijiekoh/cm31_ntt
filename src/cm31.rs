@@ -1,6 +1,6 @@
 /// Complex M31 field arithmetic.
 
-use crate::rm31::{ RF, reduce, P };
+use crate::rm31::{ RF, P };
 use std::ops::{ Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign };
 use core::fmt::Display;
 use std::convert::{ From, Into };
@@ -14,6 +14,19 @@ use rand::Rng;
 pub struct CF {
     pub(crate) a: RF, // the real part
     pub(crate) b: RF, // the imaginary part
+}
+
+/// Returns the 2nd to n-th roots of unity (inclusive).
+pub fn gen_roots_of_unity(n: usize) -> Vec<CF> {
+    assert!(n > 1);
+    let w2 = CF::root_of_unity_2();
+    let mut w = w2;
+    let mut res = vec![w2];
+    for _ in 2..n+1 {
+        w = w.try_sqrt().unwrap();
+        res.push(w);
+    }
+    res
 }
 
 impl CF {
@@ -36,16 +49,6 @@ impl CF {
         }
     }
 
-    /*
-    pub fn add_base_f(self, f: RF) -> CF {
-        // TODO: check if this is correct
-        CF { 
-            a: self.real() + f,
-            b: self.imag(),
-        }
-    }
-    */
-
     pub fn try_inverse(&self) -> Option<Self> {
         if self.a.val == 0 && self.b.val == 0 {
             return None;
@@ -67,9 +70,34 @@ impl CF {
         Some(result)
     }
 
+    pub fn reduce(self) -> CF {
+        CF { a: self.a.reduce(), b: self.b.reduce() }
+    }
+
+    pub fn root_of_unity_2() -> CF {
+        CF::new(0x7ffffffe, 0)
+    }
+
+    /// Returns the 4th root of unity. Since there are 2 options for this value, select the one you
+    /// want using the input `i`.
+    /// The 4th root of unity is (0, +-1)
+    /// The options denoted by `i` are:
+    /// 0. ( 0,  v)
+    /// 1. ( 0, -v)
+    pub fn root_of_unity_4(i: u32) -> Result<CF, String> {
+        assert!(i < 2);
+        if i == 0 {
+            return Ok(CF::new(0, 1));
+        }
+        if i == 1 {
+            return Ok(CF::new(0, P - 1));
+        }
+        panic!("i must be 0 or 1");
+    }
+
     /// Returns the 8th root of unity. Since there are 4 options for this value, select the one you
     /// want using the input `i`.
-    /// The 8th root of unity should be (+-2^15, +-2^15)
+    /// The 8th root of unity is (+-2^15, +-2^15)
     /// Let v = 2^15
     /// The options denoted by `i` are:
     /// 0. ( v,  v)
@@ -110,6 +138,52 @@ impl CF {
     pub fn mul_j(self) -> Self {
         CF { a: self.b.neg(), b: self.a }
     }
+
+    /// Attempts to compute a square root of a complex element in CF.
+    /// TODO: explain this function
+    pub fn try_sqrt(self) -> Option<CF> {
+        if self.is_zero() {
+            return Some(CF::zero());
+        }
+
+        let two = RF::new(2);
+        // 2 is invertible in RF; unwrap is safe since P ≠ 2.
+        let two_inv = two.try_inverse().unwrap();
+        let a = self.a;
+        let b = self.b;
+        // Compute r = sqrt(a^2 + b^2) in RF.
+        let norm = (a * a + b * b).reduce();
+        let r = norm.try_sqrt()?;
+        
+        // Candidate branch 1: try x = sqrt((a + r)/2).
+        let candidate_x2 = ((a + r) * two_inv).reduce();
+        if let Some(x) = candidate_x2.try_sqrt() {
+            // If x ≠ 0 then we can recover y as b/(2x).
+            if !x.is_zero() {
+                let x_inv = x.try_inverse().unwrap();
+                let y = (b * two_inv * x_inv).reduce();
+                let candidate = CF { a: x, b: y }.reduce();
+                if candidate * candidate == self {
+                    return Some(candidate);
+                }
+            }
+        }
+        
+        // Candidate branch 2: try y = sqrt((r - a)/2).
+        let candidate_y2 = ((r - a) * two_inv).reduce();
+        if let Some(y) = candidate_y2.try_sqrt() {
+            if !y.is_zero() {
+                let y_inv = y.try_inverse().unwrap();
+                let x = (b * two_inv * y_inv).reduce();
+                let candidate = CF { a: x, b: y }.reduce();
+                if candidate * candidate == self {
+                    return Some(candidate);
+                }
+            }
+        }
+
+        None
+    }
 }
 
 impl Zero for CF {
@@ -149,7 +223,7 @@ impl Into<CF> for (u32, u32) {
 impl From<CF> for (u32, u32) {
     #[inline]
     fn from(f: CF) -> (u32, u32) {
-        (reduce(f.a.val) as u32, reduce(f.b.val) as u32)
+        (f.a.reduce().val as u32, f.b.reduce().val as u32)
     }
 }
 
@@ -283,7 +357,7 @@ mod tests {
     use crate::m31::P;
     use rand_chacha::ChaCha8Rng;
     use rand_chacha::rand_core::SeedableRng;
-
+    use num_traits::One;
 
     #[test]
     fn test_new() {
@@ -357,31 +431,86 @@ mod tests {
         }
     }
 
+    fn do_root_of_unity_test(root: CF, n: usize) {
+        let mut r = CF::one();
+        let one = CF::one();
+        for _ in 0..n - 1 {
+            r = r * root;
+            assert_ne!(r, one);
+        }
+        r = r * root;
+        assert_eq!(r, one);
+    }
+
+    #[test]
+    fn test_w4() {
+        for i in 0..2 {
+            do_root_of_unity_test(CF::root_of_unity_4(i).unwrap(), 4);
+        }
+    }
+
     #[test]
     fn test_w8() {
-        fn do_test(w8: CF) {
-            // w8 ^ 8 should equal 1, and not 1 for w8 ^ 1..7
-            let r1 = w8;
-            let r2 = w8 * w8;
-            let r3 = r2 * w8;
-            let r4 = r3 * w8;
-            let r5 = r4 * w8;
-            let r6 = r5 * w8;
-            let r7 = r6 * w8;
-            let r8 = r7 * w8;
-
-            let one = CF::one();
-            assert_ne!(r1, one);
-            assert_ne!(r2, one);
-            assert_ne!(r3, one);
-            assert_ne!(r4, one);
-            assert_ne!(r5, one);
-            assert_ne!(r6, one);
-            assert_ne!(r7, one);
-            assert_eq!(r8, one);
-        }
         for i in 0..4 {
-            do_test(CF::root_of_unity_8(i).unwrap());
+            do_root_of_unity_test(CF::root_of_unity_8(i).unwrap(), 8);
         }
+    }
+
+    #[test]
+    fn test_sqrt() {
+        // TODO: figure out why it doesn't work when
+        // v equals CF { a: RF { val: 53cd1db6 }, b: RF { val: 5ac2fbb3 } }
+        let mut rng = ChaCha8Rng::seed_from_u64(1);
+        let v: CF = rng.r#gen();
+        let v2 = v * v;
+        let s = v2.try_sqrt().unwrap();
+        assert_eq!(s * s, v2);
+    }
+
+    #[test]
+    fn test_w16() {
+        let w8 = CF::root_of_unity_8(0).unwrap();
+        let w16 = w8.try_sqrt().unwrap();
+        do_root_of_unity_test(w16, 16);
+    }
+
+    #[test]
+    fn test_w2() {
+        let w4 = CF::root_of_unity_4(0).unwrap();
+        let w2 = w4 * w4;
+        println!("{}", w2);
+        do_root_of_unity_test(w2, 2);
+    }
+
+    #[test]
+    fn test_w32() {
+        let w8 = CF::root_of_unity_8(0).unwrap();
+        let w16 = w8.try_sqrt().unwrap();
+        let w32 = w16.try_sqrt().unwrap();
+        do_root_of_unity_test(w32, 32);
+    }
+
+    #[test]
+    fn test_gen_roots_of_unity() {
+        let roots_of_unity = gen_roots_of_unity(21);
+        for i in 0..roots_of_unity.len() {
+            let w = roots_of_unity[i];
+            do_root_of_unity_test(w, 2usize.pow(i as u32 + 1));
+        }
+    }
+
+    #[test]
+    fn test_opts() {
+        // Test the optimized functions.
+        let w = CF::root_of_unity_8(0).unwrap();
+        let j = w.pow(2);
+        let neg_1 = w.pow(4);
+
+        let v: CF = CF::new(0x12345678, 0x87654321);
+        let v_neg_1 = v.mul_neg_1();
+        assert_eq!(v * neg_1, v_neg_1);
+
+        let v_j = v.mul_j();
+        assert_eq!(v * j, v_j);
     }
 }

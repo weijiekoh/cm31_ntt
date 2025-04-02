@@ -1,31 +1,16 @@
 use crate::m31::into_m31;
 use core::fmt::Display;
-use num_traits::{ Zero, One };
+use num_traits::{ Zero, One, Pow };
 use std::ops::{ Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign };
 use std::convert::{ From, Into };
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
-//use num::CheckedAdd;
 
 pub const P: u32 = 0x7fffffff;
 pub const P_64: u64 = 0x7fffffff;
 pub const P2: u64 = 0xfffffffe;
 pub const P3: u64 = 0x17ffffffd;
 pub const MASK: u64 = 0xffffffff;
-
-/*
-// TODO: implement addition without reduction. This may overflow so the caller is responsible for ensuring
-// that only a safe number of additions without reduction are performed
-trait AddWithoutReduction {
-    fn add_without_reduction(self, other: Self) -> Self;
-}
-
-// TODO: implement multiplication without reduction. This may overflow so the caller is responsible for ensuring that only a safe number of multiplications without reduction are performed
-trait MulWithoutReduce {
-    fn mul_without_reduction(self, other: Self) -> Self;
-}
-*/
-
 
 // The redundant form of the M31 field. It consists of 31 lower bits (x_l) and the rest are higher
 // bits (x_h).
@@ -36,17 +21,6 @@ pub struct RF {
     pub(crate) val: u64,
 }
 
-// TODO: there may be a more efficient way to do this by checking bits and subtracting
-// 1P or 2P as needed, instead of using the while loop
-// 1p:    01111111111111111111111111111111 (32nd bit is 0 and all higher bits are 0)
-// 2p:    11111111111111111111111111111110 (32nd bit is 1 and all higher bits are 0)
-// 3p:   101111111111111111111111111111101 (33rd bit is 1 and all higher bits are 0)
-// 4p:   111111111111111111111111111111100 (33rd bit is 1 and all higher bits are 0)
-// 5p:  1001111111111111111111111111111011 (34th bit is 1 and all higher bits are 0)
-// 6p:  1011111111111111111111111111111010 (34th bit is 1 and all higher bits are 0)
-// 7p:  1101111111111111111111111111111001 (34th bit is 1 and all higher bits are 0)
-// 8p:  1111111111111111111111111111111000 (34th bit is 1 and all higher bits are 0)
-// 9p: 10001111111111111111111111111110111 (35th bit is 1 and all higher bits are 0)
 pub fn reduce(value: u64) -> u64 {
     let x_l = value & 0xffffffff;
     let x_h = value >> 32;
@@ -85,6 +59,7 @@ impl RF {
         res
     }
 
+    #[inline]
     pub fn try_inverse(&self) -> Option<Self> {
         // TODO: optimise using deferred reduction
 
@@ -135,6 +110,18 @@ impl RF {
         Self::new(rotated as u32)
     }
 
+    pub fn try_sqrt(&self) -> Option<RF> {
+        if self.is_zero() {
+            return Some(RF::zero());
+        }
+        // (P + 1) / 4 = 0x20000000
+        let candidate = self.pow(0x20000000);
+        if candidate.square().reduce() == self.reduce() {
+            Some(candidate.reduce())
+        } else {
+            None
+        }
+    }
 }
 
 impl Into<RF> for u32 {
@@ -271,6 +258,25 @@ impl SubAssign for RF {
     #[inline]
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
+    }
+}
+
+impl Pow<usize> for RF {
+    type Output = RF;
+
+    #[inline]
+    fn pow(self, exp: usize) -> Self::Output {
+        let mut result = RF::one();
+        let mut base = self;
+        let mut e = exp;
+        while e > 0 {
+            if e & 1 == 1 {
+                result *= base;
+            }
+            base *= base;
+            e >>= 1;
+        }
+        result
     }
 }
 
@@ -519,6 +525,33 @@ mod tests {
             e_y = (e_y + e_x) % P_64;
 
             assert_eq!(reduced.val, e_y);
+        }
+    }
+
+    #[test]
+    fn test_sqrt() {
+        let valid_test_cases = [
+            RF::new(0),
+            RF::new(1),
+            RF::new(2),
+            RF::new(4),
+            RF::new(9),
+            RF::new(16),
+        ];
+
+        for t in valid_test_cases {
+            let s = t.try_sqrt().unwrap();
+            let s2 = s.square().reduce();
+            assert_eq!(s2, t);
+        }
+
+        let invalid_test_cases = [
+            RF::new(3),
+        ];
+
+        for t in invalid_test_cases {
+            let s = t.try_sqrt();
+            assert!(s.is_none());
         }
     }
 }
