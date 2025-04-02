@@ -1,6 +1,6 @@
 use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
-use cm31_ntt::ntt::ntt_radix_8;
+use cm31_ntt::ntt::ntt_block_8;
 use cm31_ntt::cm31::CF;
 use num_traits::Zero;
 use rand::Rng;
@@ -17,7 +17,7 @@ fn benchmark(c: &mut Criterion) {
     let w = CF::root_of_unity_8(0).unwrap();
     let w_neg_1 = w.mul_neg_1();
 
-    c.bench_function("ntt_radix_8", |b| b.iter(|| ntt_radix_8(black_box(inputs), black_box(w), black_box(w_neg_1))));
+    c.bench_function("ntt_block_8", |b| b.iter(|| ntt_block_8(black_box(inputs), black_box(w), black_box(w_neg_1))));
 }
 
 criterion_group!(

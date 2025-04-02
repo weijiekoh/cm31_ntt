@@ -264,13 +264,10 @@ fn is_power_of_8(n: u32) -> bool {
     num == 1
 }
 
-pub fn ntt_radix_8(f: Vec<CF>, w: CF) -> Vec<CF> {
+pub fn ntt_radix_8(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
     let n = f.len();
     assert!(n >= 8, "n must be at least 8");
     assert!(is_power_of_8(n as u32), "n must be a power of 8");
-
-    let w8 = CF::root_of_unity_8(0).unwrap();
-    let w8_neg_1 = w8.mul_neg_1();
 
     fn do_ntt(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
         let n = f.len();
@@ -658,8 +655,10 @@ pub mod tests {
         for i in 0..n {
             f[i] = rng.r#gen();
         }
-        let w8 = get_root_of_unity(n);
-        let res = ntt_radix_8(f.clone(), w8);
+        let w = get_root_of_unity(n);
+        let w8 = CF::root_of_unity_8(0).unwrap();
+        let w8_neg_1 = w8.mul_neg_1();
+        let res = ntt_radix_8(f.clone(), w, w8, w8_neg_1);
         let naive_res = naive_ntt(f.clone());
         assert_eq!(res, naive_res);
     }
