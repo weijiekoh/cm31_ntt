@@ -21,18 +21,23 @@ cargo bench
 At the time of writing, the results on a Raspberry Pi 5 are:
 
 ```
-     Running benches/ntt_32768.rs (target/release/deps/ntt_32768-28e6d3fe29b7c7a3)
+     Running benches/ntt_32768.rs (target/release/deps/ntt_32768-380c493e74327e27)
 Gnuplot not found, using plotters backend
-Benchmarking ntt_radix_8: Collecting 10 samples in estimated 20.145 s (2145 iteration
-ntt_radix_8             time:   [9.3906 ms 9.4047 ms 9.4104 ms]
-                        change: [+4796428% +4803849% +4810947%] (p = 0.00 < 0.05)
+ntt_radix_8             time:   [19.014 ms 19.032 ms 19.059 ms]
+                        change: [+102.58% +102.92% +103.27%] (p = 0.00 < 0.05)
                         Performance has regressed.
+Found 3 outliers among 10 measurements (30.00%)
+  2 (20.00%) low mild
+  1 (10.00%) high mild
 
-     Running benches/ntt_block_8.rs (target/release/deps/ntt_block_8-eb678ddc29dce925)
+     Running benches/ntt_block_8.rs (target/release/deps/ntt_block_8-3f25dbef695374ee)
 Gnuplot not found, using plotters backend
-Benchmarking ntt_block_8: Collecting 10000 samples in estimated 22.649 s (300M iterat
-ntt_block_8             time:   [75.632 ns 75.653 ns 75.675 ns]
-Found 450 outliers among 10000 measurements (4.50%)
-  338 (3.38%) high mild
-  112 (1.12%) high severe
+ntt_block_8             time:   [194.70 ns 194.70 ns 194.70 ns]
+                        change: [+157.39% +157.56% +157.68%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 719 outliers among 10000 measurements (7.19%)
+  2 (0.02%) low severe
+  14 (0.14%) low mild
+  395 (3.95%) high mild
+  308 (3.08%) high severe
 ```
