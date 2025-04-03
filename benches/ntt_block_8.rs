@@ -17,7 +17,7 @@ fn benchmark(c: &mut Criterion) {
     let w = CF::root_of_unity_8(0).unwrap();
     let w_neg_1 = w.mul_neg_1();
 
-    c.bench_function("ntt_block_8", |b| b.iter(|| ntt_block_8(black_box(inputs), black_box(w), black_box(w_neg_1))));
+    c.bench_function("ntt_block_8", |b| b.iter(|| ntt_block_8(black_box(inputs), w, w_neg_1)));
 }
 
 criterion_group!(

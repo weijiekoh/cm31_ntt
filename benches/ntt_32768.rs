@@ -19,7 +19,7 @@ fn benchmark(c: &mut Criterion) {
     let w8 = CF::root_of_unity_8(0).unwrap();
     let w8_neg_1 = w8.mul_neg_1();
 
-    c.bench_function("ntt_radix_8", |b| b.iter(|| ntt_radix_8(black_box(inputs.clone()), black_box(w), black_box(w8), black_box(w8_neg_1))));
+    c.bench_function("ntt_radix_8", |b| b.iter(|| ntt_radix_8(black_box(inputs.clone()), w, w8, w8_neg_1)));
 }
 
 criterion_group!(

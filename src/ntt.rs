@@ -264,10 +264,16 @@ fn is_power_of_8(n: u32) -> bool {
     num == 1
 }
 
+/// Performs a radix-8 NTT on the polynomial f.
+/// @param f The coefficients of the polynomial to be transformed.
+/// @param w The n-th root of unity, where n is the length of f.
+/// @param w8 The 8th root of unity.
+/// @param w8_neg_1 The 8th root of unity multiplied by -1.
+/// @return The transformed polynomial.
 pub fn ntt_radix_8(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
     let n = f.len();
-    assert!(n >= 8, "n must be at least 8");
-    assert!(is_power_of_8(n as u32), "n must be a power of 8");
+    debug_assert!(n >= 8, "n must be at least 8");
+    debug_assert!(is_power_of_8(n as u32), "n must be a power of 8");
 
     fn do_ntt(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
         let n = f.len();
@@ -319,7 +325,7 @@ pub fn ntt_radix_8(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
             let wt6  = wt5 * wt;
             let wt7  = wt6 * wt;
 
-            // Apply twiddle factors to each of the eight sub-transform outputs.
+            // Apply twiddle factors
             let t0 = ntt_a0[k];
             let t1 = wt * ntt_a1[k];
             let t2 = wt2 * ntt_a2[k];
@@ -329,7 +335,6 @@ pub fn ntt_radix_8(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
             let t6 = wt6 * ntt_a6[k];
             let t7 = wt7 * ntt_a7[k];
 
-            // Collect the eight values.
             let ts = [t0, t1, t2, t3, t4, t5, t6, t7];
 
             // Use the provided 8-point butterfly.
