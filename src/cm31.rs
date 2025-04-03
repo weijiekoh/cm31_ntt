@@ -273,22 +273,19 @@ impl Mul for CF {
     type Output = Self;
 
     #[inline]
+    // TODO: check if reduction is necessary
     fn mul(self, rhs: Self) -> Self::Output {
-        // TODO: optimise by deferring reduction. (One must be very careful when doing so.)
-        // To do so we need add_without_reduction and mul_without_reduction functions, and also
-        // prove that the results remain within bounds, and do a final reduction on the final
-        // result (real, imag).
         let a = self.a;
         let b = self.b;
         let c = rhs.a;
         let d = rhs.b;
 
-        let ac = (a * c).reduce();
-        let bd = (b * d).reduce();
+        let ac = a * c;
+        let bd = b * d;
         let real = ac - bd;
-        let imag = ((a + b).reduce() * (c + d).reduce() - ac).reduce() - bd;
+        let imag = ((a + b) * (c + d) - ac) - bd;
 
-        CF { a: real.reduce(), b: imag.reduce() }
+        CF { a: real, b: imag }
     }
 }
 

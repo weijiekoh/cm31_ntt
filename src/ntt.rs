@@ -293,32 +293,46 @@ pub fn ntt_radix_8(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
         let mut a5 = vec![CF::zero(); m];
         let mut a6 = vec![CF::zero(); m];
         let mut a7 = vec![CF::zero(); m];
+
         for i in 0..m {
-            a0[i] = f[8 * i];
-            a1[i] = f[8 * i + 1];
-            a2[i] = f[8 * i + 2];
-            a3[i] = f[8 * i + 3];
-            a4[i] = f[8 * i + 4];
-            a5[i] = f[8 * i + 5];
-            a6[i] = f[8 * i + 6];
-            a7[i] = f[8 * i + 7];
+            let i_8 = i * 8;
+            a0[i] = f[i_8];
+            a1[i] = f[i_8 + 1];
+            a2[i] = f[i_8 + 2];
+            a3[i] = f[i_8 + 3];
+            a4[i] = f[i_8 + 4];
+            a5[i] = f[i_8 + 5];
+            a6[i] = f[i_8 + 6];
+            a7[i] = f[i_8 + 7];
         }
 
+        let w_pow_8 = w.pow(8);
         // Recurse
-        let ntt_a0 = do_ntt(a0, w.pow(8), w8, w8_neg_1);
-        let ntt_a1 = do_ntt(a1, w.pow(8), w8, w8_neg_1);
-        let ntt_a2 = do_ntt(a2, w.pow(8), w8, w8_neg_1);
-        let ntt_a3 = do_ntt(a3, w.pow(8), w8, w8_neg_1);
-        let ntt_a4 = do_ntt(a4, w.pow(8), w8, w8_neg_1);
-        let ntt_a5 = do_ntt(a5, w.pow(8), w8, w8_neg_1);
-        let ntt_a6 = do_ntt(a6, w.pow(8), w8, w8_neg_1);
-        let ntt_a7 = do_ntt(a7, w.pow(8), w8, w8_neg_1);
+        let ntt_a0 = do_ntt(a0, w_pow_8, w8, w8_neg_1);
+        let ntt_a1 = do_ntt(a1, w_pow_8, w8, w8_neg_1);
+        let ntt_a2 = do_ntt(a2, w_pow_8, w8, w8_neg_1);
+        let ntt_a3 = do_ntt(a3, w_pow_8, w8, w8_neg_1);
+        let ntt_a4 = do_ntt(a4, w_pow_8, w8, w8_neg_1);
+        let ntt_a5 = do_ntt(a5, w_pow_8, w8, w8_neg_1);
+        let ntt_a6 = do_ntt(a6, w_pow_8, w8, w8_neg_1);
+        let ntt_a7 = do_ntt(a7, w_pow_8, w8, w8_neg_1);
 
         let mut res = vec![CF::zero(); n];
         for k in 0..m {
-            // Twiddle factors
+            // Twiddle factors (TODO: precompute?)
+            // TODO:
+            // 1. Precompute the twiddle factors once for some size NTT e.g. 2^24 and pass it in as
+            //    a big table (buffer). Compare the performance of the precomputed method vs
+            //    computing them on the fly. Hopefully we can benefit from caching.
+            // 2. Support NTTs that are not a power of 8. Do the mixed-radix NTT. Start with 128
+            //    which is 2 x 64
+            // 3. Check that CM muls are done in redundant forms
+            // 4. We want to make sure that our mixed-radix NTTs are done in radix 8 stages,
+            //    followed by radix 4, then radix 2
+            // 5. Check if CM31 does any unnecessary reductions
+
             let wt   = w.pow(k);
-            let wt2  = wt * wt;
+            let wt2  = wt  * wt;
             let wt3  = wt2 * wt;
             let wt4  = wt3 * wt;
             let wt5  = wt4 * wt;
@@ -327,7 +341,7 @@ pub fn ntt_radix_8(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
 
             // Apply twiddle factors
             let t0 = ntt_a0[k];
-            let t1 = wt * ntt_a1[k];
+            let t1 = wt  * ntt_a1[k];
             let t2 = wt2 * ntt_a2[k];
             let t3 = wt3 * ntt_a3[k];
             let t4 = wt4 * ntt_a4[k];
@@ -654,17 +668,19 @@ pub mod tests {
 
     #[test]
     fn test_ntt_radix_8() {
-        let n = 64;
         let mut rng = ChaCha8Rng::seed_from_u64(0);
-        let mut f = vec![CF::zero(); n];
-        for i in 0..n {
-            f[i] = rng.r#gen();
+        for _ in 0..4 {
+            let n = 8 * 8 * 8;
+            let mut f = vec![CF::zero(); n];
+            for i in 0..n {
+                f[i] = rng.r#gen();
+            }
+            let w = get_root_of_unity(n);
+            let w8 = CF::root_of_unity_8(0).unwrap();
+            let w8_neg_1 = w8.mul_neg_1();
+            let res = ntt_radix_8(f.clone(), w, w8, w8_neg_1);
+            let naive_res = naive_ntt(f.clone());
+            assert_eq!(res, naive_res);
         }
-        let w = get_root_of_unity(n);
-        let w8 = CF::root_of_unity_8(0).unwrap();
-        let w8_neg_1 = w8.mul_neg_1();
-        let res = ntt_radix_8(f.clone(), w, w8, w8_neg_1);
-        let naive_res = naive_ntt(f.clone());
-        assert_eq!(res, naive_res);
     }
 }
