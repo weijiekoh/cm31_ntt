@@ -100,3 +100,17 @@ NTT/size 262144 with precomputation
                         change: [+0.8209% +0.8727% +0.9229%] (p = 0.00 < 0.05)
                         Change within noise threshold.
 ```
+
+For an NTT of size 2^24:
+
+```
+Benchmarking NTT (2^24)/size 16777216 without precomputation: Warming up for 3.0000 s
+NTT (2^24)/size 16777216 without precomputation
+                        time:   [8.8322 s 8.8360 s 8.8401 s]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking NTT (2^24)/size 16777216 with precomputation: Warming up for 3.0000 s
+NTT (2^24)/size 16777216 with precomputation
+                        time:   [5.9858 s 5.9944 s 6.0040 s]
+
+```
