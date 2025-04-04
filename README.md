@@ -3,11 +3,11 @@
 ## Implementations of:
 
 - [x] M31 field arithmetic
-- [x] M31 field arithmetic using redundant representation
-- [x] Complex M31 field arithmetic (using the redundant representation of M31s)
+- [x] M31 field arithmetic using redundant representation [x] Complex M31 field arithmetic (using the redundant representation of M31s)
 - [x] NTT (radix-8)
 - [x] Benchmarks
 - [ ] Optimsations
+
 
 ## Benchmarks
 
@@ -41,3 +41,13 @@ Found 719 outliers among 10000 measurements (7.19%)
   395 (3.95%) high mild
   308 (3.08%) high severe
 ```
+
+### Precomputation of twiddle factors
+
+At the time of writing, the results on a Raspberry Pi 5 are:
+
+| NTT size | Without precomputation | With precomputation |
+|-|-|-|
+| 512      |         |         |
+| 4096     |         |         |
+| 32768    |         |         |

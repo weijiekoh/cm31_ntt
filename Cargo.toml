@@ -19,3 +19,7 @@ harness = false
 [[bench]]
 name = "ntt_32768"
 harness = false
+
+[[bench]]
+name = "ntt_precompute"
+harness = false

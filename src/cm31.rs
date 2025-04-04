@@ -142,6 +142,24 @@ impl CF {
     /// Attempts to compute a square root of a complex element in CF.
     /// TODO: explain this function
     pub fn try_sqrt(self) -> Option<CF> {
+        // Recall the multiplication law for CM31: 
+        //     (a, b) * (c, d) = (ac - bd, ad + bc)
+        // This means that the square of (a, b) is:
+        //     (a, b) * (a, b) = (a^2 - b^2, 2ab)
+        //
+        // We want to recover a and b. For clarity, let us denote x = a^2 - b^2 and y = 2ab.
+        //
+        // To do so, we can use the following approach:
+        // 1. Compute r = sqrt(x^2 + y^2) in RF.
+        // 2. Compute x = sqrt((x + r)/2) in RF.
+        // 3. Compute y = sqrt((r - x)/2) in RF.
+        // 4. If x ≠ 0 then we can recover y as b/(2x).
+        // 5. If y ≠ 0 then we can recover x as a/(2y).
+        // 6. Else, return None.
+        //
+        // Let's look at the first branch.
+        // r = sqrt(x^2 + y^2) = sqrt((a^2 - b^2)^2 + (2ab)^2)
+        // 
         if self.is_zero() {
             return Some(CF::zero());
         }
@@ -231,6 +249,7 @@ impl Add for CF {
     type Output = Self;
 
     #[inline]
+    // TODO: check if reduction is necessary
     fn add(self, rhs: Self) -> Self::Output {
         let a = self.a;
         let b = self.b;
@@ -252,13 +271,14 @@ impl Sub for CF {
     type Output = Self;
 
     #[inline]
+    // TODO: check if reduction is necessary
     fn sub(self, rhs: Self) -> Self::Output {
         let a = self.a;
         let b = self.b;
         let c = rhs.a;
         let d = rhs.b;
 
-        CF { a: (a - c).reduce(), b: (b - d).reduce() }
+        CF { a: a - c, b: b - d }
     }
 }
 
@@ -275,6 +295,9 @@ impl Mul for CF {
     #[inline]
     // TODO: check if reduction is necessary
     fn mul(self, rhs: Self) -> Self::Output {
+        // (a, b) * (c, d) = (ac - bd, ad + bc)
+        // This implementation uses Karatsuba:
+        // (ac - bd, (a + b)(c + d) - ac - bd)
         let a = self.a;
         let b = self.b;
         let c = rhs.a;
@@ -459,7 +482,8 @@ mod tests {
         // v equals CF { a: RF { val: 53cd1db6 }, b: RF { val: 5ac2fbb3 } }
         let mut rng = ChaCha8Rng::seed_from_u64(1);
         let v: CF = rng.r#gen();
-        let v2 = v * v;
+        let v = v.reduce();
+        let v2 = (v * v).reduce();
         let s = v2.try_sqrt().unwrap();
         assert_eq!(s * s, v2);
     }
@@ -475,7 +499,6 @@ mod tests {
     fn test_w2() {
         let w4 = CF::root_of_unity_4(0).unwrap();
         let w2 = w4 * w4;
-        println!("{}", w2);
         do_root_of_unity_test(w2, 2);
     }
 
