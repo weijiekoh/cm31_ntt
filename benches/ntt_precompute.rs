@@ -15,7 +15,6 @@ fn bench_with_and_without_precomputation(c: &mut Criterion) {
         sizes.push((8usize).pow(i));
     }
 
-    let mut c = c.clone().measurement_time(std::time::Duration::from_secs(15));
     let mut group = c.benchmark_group("NTT");
     for n in sizes {
         let w = get_root_of_unity(n as usize);
