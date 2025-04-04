@@ -277,14 +277,14 @@ pub fn precompute_twiddles(n: usize, w: CF, radix: usize) -> Vec<CF> {
     while current_n > 1 {
         let m = current_n / radix;
         let next_w = current_w.pow(radix);
-        twiddles.push(next_w);
+        twiddles.push(next_w.reduce());
         
         for k in 0..m {
             let base = current_w.pow(k);
             let mut factor = CF::one();
             for _r in 1..radix {
                 factor = factor * base;
-                twiddles.push(factor);
+                twiddles.push(factor.reduce());
             }
         }
         
