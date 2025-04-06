@@ -1,12 +1,16 @@
-use crate::cm31::{CF, gen_roots_of_unity, W_8, W_8_NEG_1};
+use crate::cm31::{
+    CF,
+    gen_roots_of_unity,
+    //W_4, W_4_NEG_1,
+    W_8, W_8_NEG_1,
+};
 use crate::rm31::RF;
 use num_traits::{Zero, One};
 use num_traits::pow::Pow;
 
 /// A radix-4 NTT butterfly.
-pub fn ntt_block_4(f: [CF; 4], w: CF, w_neg_1: CF) -> [CF; 4] {
+pub fn ntt_block_4(f: [CF; 4]) -> [CF; 4] {
     debug_assert_eq!(f.len(), 4);
-    debug_assert_eq!(-w, w_neg_1);
     let mut res = [CF::zero(); 4];
 
     let a0 = f[0] + f[2];
@@ -138,8 +142,9 @@ pub fn ntt_radix_2(f: Vec<CF>, w: CF) -> Vec<CF> {
 
         let mut wk = CF::one();
         for i in 0..n/2 {
+            // Perform a radix-2 butterfly
             res[i] = ntt_even[i] + wk * ntt_odd[i];
-            res[i + n/2] = ntt_even[i] + wk.mul_neg_1() * ntt_odd[i];
+            res[i + n/2] = ntt_even[i] - wk * ntt_odd[i];
             wk = wk * w;
         }
 
@@ -516,8 +521,6 @@ pub mod tests {
     #[test]
     fn test_ntt_block_4() {
         // Test the radix-4 NTT butterfly.
-        let w = CF::root_of_unity_4(0).unwrap();
-        let w_neg_1 = w.mul_neg_1();
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..1024 {
             let mut poly = [CF::zero(); 4];
@@ -526,7 +529,7 @@ pub mod tests {
             }
 
             let naive = naive_ntt(poly.to_vec());
-            let res = ntt_block_4(poly, w, w_neg_1);
+            let res = ntt_block_4(poly);
             assert_eq!(naive, res);
 
             let ires = naive_intt(res.to_vec());
@@ -575,8 +578,6 @@ pub mod tests {
 
         let n = 8 * 8 * 8;
         let w = get_root_of_unity(n);
-        let w8 = CF::root_of_unity_8(0).unwrap();
-        let w8_neg_1 = w8.mul_neg_1();
 
         for _ in 0..4 {
             let mut f = vec![CF::zero(); n];
