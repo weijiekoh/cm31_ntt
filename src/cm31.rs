@@ -16,6 +16,9 @@ pub struct CF {
     pub(crate) b: RF, // the imaginary part
 }
 
+pub const W_8: CF = CF::new(0x00008000, 0x00008000);
+pub const W_8_NEG_1: CF = CF::new(0x7fff7fff, 0x7fff7fff);
+
 /// Returns the 2nd to n-th roots of unity (inclusive).
 pub fn gen_roots_of_unity(n: usize) -> Vec<CF> {
     assert!(n > 1);

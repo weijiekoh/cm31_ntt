@@ -1,4 +1,4 @@
-use crate::cm31::{CF, gen_roots_of_unity};
+use crate::cm31::{CF, gen_roots_of_unity, W_8, W_8_NEG_1};
 use crate::rm31::RF;
 use num_traits::{Zero, One};
 use num_traits::pow::Pow;
@@ -23,9 +23,9 @@ pub fn ntt_block_4(f: [CF; 4], w: CF, w_neg_1: CF) -> [CF; 4] {
 }
 
 /// A radix-8 NTT butterfly.
-pub fn ntt_block_8(f: [CF; 8], w: CF, w_neg_1: CF) -> [CF; 8] {
+#[inline]
+pub fn ntt_block_8(f: [CF; 8]) -> [CF; 8] {
     debug_assert_eq!(f.len(), 8);
-    debug_assert_eq!(-w, w_neg_1);
     let mut res = [CF::zero(); 8];
 
     // Refer to Yuval's Radix 8 DIT diagram.
@@ -60,10 +60,10 @@ pub fn ntt_block_8(f: [CF; 8], w: CF, w_neg_1: CF) -> [CF; 8] {
     res[4] = b0 + b4.mul_neg_1();
     res[2] = b1 + b5_j;
     res[6] = b1 + b5_j.mul_neg_1();
-    res[1] = b2 + b6 * w;
-    res[5] = b2 + b6 * w_neg_1;
-    res[3] = b3 + b7.mul_j() * w;
-    res[7] = b3 + b7.mul_j() * w_neg_1;
+    res[1] = b2 + b6 * W_8;
+    res[5] = b2 + b6 * W_8_NEG_1;
+    res[3] = b3 + b7.mul_j() * W_8;
+    res[7] = b3 + b7.mul_j() * W_8_NEG_1;
 
     res
 }
@@ -115,6 +115,8 @@ pub fn ntt_radix_2(f: Vec<CF>, w: CF) -> Vec<CF> {
 
     fn do_ntt(f: Vec<CF>, w: CF) -> Vec<CF> {
         let n = f.len();
+
+        // Base case
         if n == 1 {
             return f;
         }
@@ -165,12 +167,12 @@ fn is_power_of_8(n: u32) -> bool {
 /// @param w8 The 8th root of unity.
 /// @param w8_neg_1 The 8th root of unity multiplied by -1.
 /// @return The transformed polynomial in evaluation form.
-pub fn ntt_radix_8(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
+pub fn ntt_radix_8(f: Vec<CF>, w: CF) -> Vec<CF> {
     let n = f.len();
     debug_assert!(n >= 8, "n must be at least 8");
     debug_assert!(is_power_of_8(n as u32), "n must be a power of 8");
 
-    fn do_ntt(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
+    fn do_ntt(f: Vec<CF>, w: CF) -> Vec<CF> {
         let n = f.len();
         if n == 1 {
             return f;
@@ -203,28 +205,22 @@ pub fn ntt_radix_8(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
 
         let w_pow_8 = w.pow(8);
         // Recurse
-        let ntt_a0 = do_ntt(a0, w_pow_8, w8, w8_neg_1);
-        let ntt_a1 = do_ntt(a1, w_pow_8, w8, w8_neg_1);
-        let ntt_a2 = do_ntt(a2, w_pow_8, w8, w8_neg_1);
-        let ntt_a3 = do_ntt(a3, w_pow_8, w8, w8_neg_1);
-        let ntt_a4 = do_ntt(a4, w_pow_8, w8, w8_neg_1);
-        let ntt_a5 = do_ntt(a5, w_pow_8, w8, w8_neg_1);
-        let ntt_a6 = do_ntt(a6, w_pow_8, w8, w8_neg_1);
-        let ntt_a7 = do_ntt(a7, w_pow_8, w8, w8_neg_1);
+        let ntt_a0 = do_ntt(a0, w_pow_8);
+        let ntt_a1 = do_ntt(a1, w_pow_8);
+        let ntt_a2 = do_ntt(a2, w_pow_8);
+        let ntt_a3 = do_ntt(a3, w_pow_8);
+        let ntt_a4 = do_ntt(a4, w_pow_8);
+        let ntt_a5 = do_ntt(a5, w_pow_8);
+        let ntt_a6 = do_ntt(a6, w_pow_8);
+        let ntt_a7 = do_ntt(a7, w_pow_8);
 
         let mut res = vec![CF::zero(); n];
         for k in 0..m {
-            // Twiddle factors (TODO: precompute?)
             // TODO:
-            // 1. Precompute the twiddle factors once for some size NTT e.g. 2^24 and pass it in as
-            //    a big table (buffer). Compare the performance of the precomputed method vs
-            //    computing them on the fly. Hopefully we can benefit from caching.
-            // 2. Support NTTs that are not a power of 8. Do the mixed-radix NTT. Start with 128
-            //    which is 2 x 64
-            // 3. Check that CM muls are done in redundant forms
-            // 4. We want to make sure that our mixed-radix NTTs are done in radix 8 stages,
-            //    followed by radix 4, then radix 2
-            // 5. Check if CM31 does any unnecessary reductions
+            // - Support NTTs that are not a power of 8. Do the mixed-radix NTT. Start with 128
+            // - which is 2 x 64. Make sure that our mixed-radix NTTs are done in radix 8 stages,
+            // - followed by radix 4, then radix 2
+            // - Check if we do any unnecessary reductions
 
             let wt   = w.pow(k);
             let wt2  = wt  * wt;
@@ -247,7 +243,7 @@ pub fn ntt_radix_8(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
             let ts = [t0, t1, t2, t3, t4, t5, t6, t7];
 
             // Use the provided 8-point butterfly.
-            let butterfly = ntt_block_8(ts, w8, w8_neg_1);
+            let butterfly = ntt_block_8(ts);
 
             // Write the butterfly result into the correct positions.
             for r in 0..8 {
@@ -257,7 +253,7 @@ pub fn ntt_radix_8(f: Vec<CF>, w: CF, w8: CF, w8_neg_1: CF) -> Vec<CF> {
         res
     }
 
-    do_ntt(f, w, w8, w8_neg_1)
+    do_ntt(f, w)
 }
 
 /// Precomputes twiddle factors for a given size `n`.
@@ -320,8 +316,8 @@ pub fn ntt_radix_8_precomputed(
     /// Recursive helper for the precomputed radix‑8 NTT.
     fn do_ntt_precomputed(
         f: Vec<CF>,
-        w8: CF,
-        w8_neg_1: CF,
+        w8: CF,       // TODO: get this value from constants.rs
+        w8_neg_1: CF, // TODO: get this value from constants.rs
         twiddles: &Vec<CF>,
         depth: usize,
         overall_transform_size: usize,
@@ -339,13 +335,11 @@ pub fn ntt_radix_8_precomputed(
         let level_twiddles = &twiddles[offset .. offset + block_size];
 
         // Partition the input into eight subarrays of length m.
-        let mut a = Vec::with_capacity(8);
+        let mut a = vec![vec![CF::zero(); m]; 8];
         for j in 0..8 {
-            let mut sub = Vec::with_capacity(m);
             for i in 0..m {
-                sub.push(f[i * 8 + j]);
+                a[j][i] = f[i * 8 + j];
             }
-            a.push(sub);
         }
 
         // Recurse
@@ -375,7 +369,7 @@ pub fn ntt_radix_8_precomputed(
             let t7 = wt7 * ntt_a[7][k];
             let ts = [t0, t1, t2, t3, t4, t5, t6, t7];
 
-            let butterfly = ntt_block_8(ts, w8, w8_neg_1);
+            let butterfly = ntt_block_8(ts);
             for r in 0..8 {
                 res[k + r * m] = butterfly[r];
             }
@@ -543,8 +537,6 @@ pub mod tests {
     #[test]
     fn test_ntt_block_8() {
         // Test the radix-8 NTT butterfly.
-        let w = CF::root_of_unity_8(0).unwrap();
-        let w_neg_1 = w.mul_neg_1();
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..1024 {
             let mut poly = [CF::zero(); 8];
@@ -553,7 +545,7 @@ pub mod tests {
             }
 
             let naive = naive_ntt(poly.to_vec());
-            let res = ntt_block_8(poly, w, w_neg_1);
+            let res = ntt_block_8(poly);
             assert_eq!(naive, res);
 
             let ires = naive_intt(res.to_vec());
@@ -591,7 +583,7 @@ pub mod tests {
             for i in 0..n {
                 f[i] = rng.r#gen();
             }
-            let res = ntt_radix_8(f.clone(), w, w8, w8_neg_1);
+            let res = ntt_radix_8(f.clone(), w);
             let naive_res = naive_ntt(f.clone());
             assert_eq!(res, naive_res);
         }
