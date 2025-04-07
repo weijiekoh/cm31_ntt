@@ -23,20 +23,16 @@ fn bench_2_24(c: &mut Criterion) {
         f[i] = rng.r#gen();
     }
 
-    let w8 = CF::root_of_unity_8(0).unwrap();
-    let w8_neg_1 = w8.mul_neg_1();
-
-
     group.bench_function(format!("size {n} without precomputation"), |b| {
         b.iter(|| {
             let f_clone = f.clone();
-            ntt_radix_8(black_box(f_clone), w, w8, w8_neg_1);
+            ntt_radix_8(black_box(f_clone), w);
         })
     });
     group.bench_function(format!("size {n} with precomputation"), |b| {
         b.iter(|| {
             let f_clone = f.clone();
-            ntt_radix_8_precomputed(black_box(f_clone), &twiddles, w8, w8_neg_1);
+            ntt_radix_8_precomputed(black_box(f_clone), &twiddles);
         })
     });
     group.finish();
