@@ -3,10 +3,9 @@ use std::ops::{ Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign };
 use num_traits::{ Zero, One };
 use std::convert::{ From, Into };
 
-/*
- * An implementation of non-redundant M31 field arithmetic. Some code is adapted from
- * Plonky3/mersenne-31, and other
- */
+/// An implementation of non-redundant M31 field arithmetic. Some code is adapted from
+/// Plonky3/mersenne-31. This file is just for reference as cm31.rs and ntt.rs rely on rm31.rs,
+/// which uses the redundant representation.
 
 // The field modulus: 2**31 - 1
 pub const P: u32 = 0x7fffffff;
@@ -21,17 +20,6 @@ pub struct F {
 pub const fn into_m31(v: u32) -> F {
     F { val: v % P }
 }
-
-// To implement for the nonredundant form:
-// - reduce(u32) -> F (done)
-// - comparison (done)
-// - addition (done)
-// - subtraction (done)
-// - negation (done)
-// - multiplication (done)
-// - multiplication by a power of 2 (done)
-// - divsion by a power of 2 (done)
-// - inversion (done)
 
 impl F {
     #[inline]

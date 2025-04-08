@@ -61,19 +61,13 @@ impl RF {
 
     #[inline]
     pub fn try_inverse(&self) -> Option<Self> {
-        // TODO: optimise using deferred reduction
-
         // From https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L188
         if self.is_zero() {
             return None;
         }
 
         // self ** (P - 2) = self ** 0b1111111111111111111111111111101
-
-        // Reduce self
-        //let reduced = reduce(self.val);
-        let reduced = self.val;
-        let p1 = Self { val: reduced };
+        let p1 = self.clone();
 
         // Compute p1 ** 2147483645
         let p101 = p1.exp_power_of_2(2) * p1;

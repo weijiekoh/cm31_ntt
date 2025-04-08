@@ -228,12 +228,6 @@ pub fn ntt_radix_8(f: Vec<CF>, w: CF) -> Vec<CF> {
 
         let mut res = vec![CF::zero(); n];
         for k in 0..m {
-            // TODO:
-            // - Support NTTs that are not a power of 8. Do the mixed-radix NTT. Start with 128
-            // - which is 2 x 64. Make sure that our mixed-radix NTTs are done in radix 8 stages,
-            // - followed by radix 4, then radix 2
-            // - Check if we do any unnecessary reductions
-
             let wt   = w.pow(k);
             let wt2  = wt  * wt;
             let wt3  = wt2 * wt;
@@ -922,20 +916,22 @@ pub mod tests {
         let n = 1024;
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         
-        // Generate random input
-        let mut f = vec![CF::zero(); n];
-        for i in 0..n {
-            f[i] = rng.r#gen();
+        for _ in 0..4 {
+            // Generate random input
+            let mut f = vec![CF::zero(); n];
+            for i in 0..n {
+                f[i] = rng.r#gen();
+            }
+            
+            // Compute NTT using our implementation
+            let res = ntt_8_stride_2(f.clone());
+            
+            // Compute NTT using naive approach for comparison
+            let naive_res = naive_ntt(f.clone());
+        
+            // Verify correctness
+            assert_eq!(res, naive_res);
         }
-        
-        // Compute NTT using our implementation
-        let res = ntt_8_stride_2(f.clone());
-        
-        // Compute NTT using naive approach for comparison
-        let naive_res = naive_ntt(f.clone());
-        
-        // Verify correctness
-        assert_eq!(res, naive_res);
         
         // Also test with 16 = 8^1 * 2 elements (smallest valid size)
         let n_small = 16;
@@ -967,22 +963,20 @@ pub mod tests {
             // Precompute twiddle factors for stride-2 combination stage
             let stride2_twiddles = precompute_twiddles_stride2(n);
             
-            // Generate random input
-            let mut f = vec![CF::zero(); n];
-            for i in 0..n {
-                f[i] = rng.r#gen();
+            for _ in 0..4 {
+                // Generate random input
+                let mut f = vec![CF::zero(); n];
+                for i in 0..n {
+                    f[i] = rng.r#gen();
+                }
+                
+                // Compute NTT using the precomputed implementation
+                let res_precomputed = ntt_8_stride_2_precomputed(f.clone(), &r8_twiddles, &stride2_twiddles);
+                
+                // Compare with naive approach
+                let naive_res = naive_ntt(f);
+                assert_eq!(res_precomputed, naive_res);
             }
-            
-            // Compute NTT using the precomputed implementation
-            let res_precomputed = ntt_8_stride_2_precomputed(f.clone(), &r8_twiddles, &stride2_twiddles);
-            
-            // Compare with regular non-precomputed implementation
-            let res_regular = ntt_8_stride_2(f.clone());
-            assert_eq!(res_precomputed, res_regular);
-            
-            // Compare with naive approach
-            let naive_res = naive_ntt(f);
-            assert_eq!(res_precomputed, naive_res);
         }
     }
     
@@ -993,20 +987,22 @@ pub mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         
         for &n in &sizes {
-            // Generate random input
-            let mut f = vec![CF::zero(); n];
-            for i in 0..n {
-                f[i] = rng.r#gen();
+            for _ in 0..4 {
+                // Generate random input
+                let mut f = vec![CF::zero(); n];
+                for i in 0..n {
+                    f[i] = rng.r#gen();
+                }
+                
+                // Compute NTT using our implementation
+                let res = ntt_8_stride_4(f.clone());
+                
+                // Compute NTT using naive approach for comparison
+                let naive_res = naive_ntt(f.clone());
+                
+                // Verify correctness
+                assert_eq!(res, naive_res);
             }
-            
-            // Compute NTT using our implementation
-            let res = ntt_8_stride_4(f.clone());
-            
-            // Compute NTT using naive approach for comparison
-            let naive_res = naive_ntt(f.clone());
-            
-            // Verify correctness
-            assert_eq!(res, naive_res);
         }
     }
     
@@ -1027,22 +1023,20 @@ pub mod tests {
             // Precompute twiddle factors for stride-4 combination stage
             let stride4_twiddles = precompute_twiddles_stride4(n);
             
-            // Generate random input
-            let mut f = vec![CF::zero(); n];
-            for i in 0..n {
-                f[i] = rng.r#gen();
+            for _ in 0..4 {
+                // Generate random input
+                let mut f = vec![CF::zero(); n];
+                for i in 0..n {
+                    f[i] = rng.r#gen();
+                }
+                
+                // Compute NTT using the precomputed implementation
+                let res_precomputed = ntt_8_stride_4_precomputed(f.clone(), &r8_twiddles, &stride4_twiddles);
+                
+                // Compare with naive approach
+                let naive_res = naive_ntt(f);
+                assert_eq!(res_precomputed, naive_res);
             }
-            
-            // Compute NTT using the precomputed implementation
-            let res_precomputed = ntt_8_stride_4_precomputed(f.clone(), &r8_twiddles, &stride4_twiddles);
-            
-            // Compare with regular non-precomputed implementation
-            let res_regular = ntt_8_stride_4(f.clone());
-            assert_eq!(res_precomputed, res_regular);
-            
-            // Compare with naive approach
-            let naive_res = naive_ntt(f);
-            assert_eq!(res_precomputed, naive_res);
         }
     }
 }

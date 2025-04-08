@@ -60,7 +60,6 @@ impl CF {
             return None;
         }
 
-        // TODO: optimise by deferring reduction.
         let a2b2 = (self.a * self.a + self.b * self.b).reduce();
         if a2b2.is_zero() {
             return None;
@@ -146,26 +145,7 @@ impl CF {
     }
 
     /// Attempts to compute a square root of a complex element in CF.
-    /// TODO: explain this function
     pub fn try_sqrt(self) -> Option<CF> {
-        // Recall the multiplication law for CM31: 
-        //     (a, b) * (c, d) = (ac - bd, ad + bc)
-        // This means that the square of (a, b) is:
-        //     (a, b) * (a, b) = (a^2 - b^2, 2ab)
-        //
-        // We want to recover a and b. For clarity, let us denote x = a^2 - b^2 and y = 2ab.
-        //
-        // To do so, we can use the following approach:
-        // 1. Compute r = sqrt(x^2 + y^2) in RF.
-        // 2. Compute x = sqrt((x + r)/2) in RF.
-        // 3. Compute y = sqrt((r - x)/2) in RF.
-        // 4. If x ≠ 0 then we can recover y as b/(2x).
-        // 5. If y ≠ 0 then we can recover x as a/(2y).
-        // 6. Else, return None.
-        //
-        // Let's look at the first branch.
-        // r = sqrt(x^2 + y^2) = sqrt((a^2 - b^2)^2 + (2ab)^2)
-        // 
         if self.is_zero() {
             return Some(CF::zero());
         }
@@ -255,7 +235,6 @@ impl Add for CF {
     type Output = Self;
 
     #[inline]
-    // TODO: check if reduction is necessary
     fn add(self, rhs: Self) -> Self::Output {
         let a = self.a;
         let b = self.b;
@@ -277,7 +256,6 @@ impl Sub for CF {
     type Output = Self;
 
     #[inline]
-    // TODO: check if reduction is necessary
     fn sub(self, rhs: Self) -> Self::Output {
         let a = self.a;
         let b = self.b;
@@ -299,7 +277,6 @@ impl Mul for CF {
     type Output = Self;
 
     #[inline]
-    // TODO: check if reduction is necessary
     fn mul(self, rhs: Self) -> Self::Output {
         // (a, b) * (c, d) = (ac - bd, ad + bc)
         // This implementation uses Karatsuba:
