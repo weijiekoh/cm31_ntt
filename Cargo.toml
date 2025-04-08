@@ -25,5 +25,13 @@ name = "ntt_precompute"
 harness = false
 
 [[bench]]
+name = "ntt_2_22"
+harness = false
+
+[[bench]]
+name = "ntt_2_23"
+harness = false
+
+[[bench]]
 name = "ntt_2_24"
 harness = false

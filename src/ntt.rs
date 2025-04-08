@@ -363,81 +363,6 @@ fn level_offset(overall_transform_size: usize, d: usize) -> usize {
     offset
 }
 
-/// Performs a generalized NTT with a stride-4 final stage.
-/// This function can handle any size that's a multiple of 4 where the subarrays
-/// can be processed by the provided sub-NTT function.
-/// @param f The coefficients of the polynomial to be transformed.
-/// @param precomputed_subntt_twiddles The precomputed twiddle factors for sub-NTTs.
-/// @param precomputed_stride4_twiddles Precomputed twiddle factors for the stride-4 stage.
-/// @param sub_ntt_func A function that performs the sub-NTT.
-/// @return The transformed polynomial in evaluation form.
-pub fn ntt_stride4_general<F>(
-    f: Vec<CF>,
-    precomputed_subntt_twiddles: &Vec<CF>,
-    precomputed_stride4_twiddles: &Vec<[CF; 3]>,
-    sub_ntt_func: F
-) -> Vec<CF>
-where
-    F: Fn(Vec<CF>, &Vec<CF>) -> Vec<CF>
-{
-    let n = f.len();
-    assert!(n.is_power_of_two(), "n must be a power of 2");
-    assert!(n % 4 == 0, "n must be divisible by 4");
-    
-    let subn = n / 4;
-    
-    // Split the input into 4 parts
-    let mut f0 = vec![CF::zero(); subn];
-    let mut f1 = vec![CF::zero(); subn];
-    let mut f2 = vec![CF::zero(); subn];
-    let mut f3 = vec![CF::zero(); subn];
-    
-    // Extract elements with stride 4
-    for i in 0..subn {
-        f0[i] = f[4*i];
-        f1[i] = f[4*i + 1];
-        f2[i] = f[4*i + 2];
-        f3[i] = f[4*i + 3];
-    }
-    
-    // Perform sub-NTT on each part using provided function and twiddles
-    let ntt_f0 = sub_ntt_func(f0, precomputed_subntt_twiddles);
-    let ntt_f1 = sub_ntt_func(f1, precomputed_subntt_twiddles);
-    let ntt_f2 = sub_ntt_func(f2, precomputed_subntt_twiddles);
-    let ntt_f3 = sub_ntt_func(f3, precomputed_subntt_twiddles);
-    
-    // Now combine the results using radix-4 butterfly with precomputed twiddles
-    let mut res = vec![CF::zero(); n];
-    
-    for i in 0..subn {
-        // Get precomputed twiddle factors for this position
-        let [w_i, w_2i, w_3i] = precomputed_stride4_twiddles[i];
-        
-        // Apply the radix-4 butterfly directly
-        let t0 = ntt_f0[i];
-        let t1 = ntt_f1[i] * w_i;
-        let t2 = ntt_f2[i] * w_2i;
-        let t3 = ntt_f3[i] * w_3i;
-        
-        // Perform radix-4 butterfly operations
-        let a0 = t0 + t2;
-        let a1 = t0 - t2;
-        let a2 = t1 + t3;
-        let a3 = t1 - t3;
-        
-        // Using j = sqrt(-1)
-        let a3_j = a3.mul_j();
-        
-        // Final combination using the radix-4 pattern
-        res[i]          = a0 + a2;
-        res[i + subn]   = a1 + a3_j;
-        res[i + 2*subn] = a0 - a2;
-        res[i + 3*subn] = a1 - a3_j;
-    }
-    
-    res
-}
-
 /// Performs a radix‑8 NTT using precomputed twiddle factors in `twiddles`.
 /// The twiddle table must have been generated for the overall transform size.
 /// This implementation uses a helper that, based on the recursion depth,
@@ -513,39 +438,49 @@ pub fn ntt_radix_8_precomputed(
     do_ntt_precomputed(f, twiddles, 0, n)
 }
 
-/// Perform an NTT on a 128-length input.
-/// Does a radix-8x8 NTT, followed by a radix-2 NTT.
-pub fn ntt_128(f: Vec<CF>) -> Vec<CF> {
+/// Performs an NTT on inputs whose length is of the form (8^k) * 2
+/// Uses ntt_block_8 for the initial transforms, followed by a radix-2 combination stage
+/// @param f The coefficients of the polynomial to be transformed.
+/// @return The transformed polynomial in evaluation form.
+pub fn ntt_8_stride_2(f: Vec<CF>) -> Vec<CF> {
     let n = f.len();
-    assert_eq!(n, 128, "n must be 128");
-
-    // First, split the input into two 64-element chunks
-    let mut f_even = vec![CF::zero(); 64];
-    let mut f_odd = vec![CF::zero(); 64];
+    // Input length must be at least 16 and of the form (8^k) * 2
+    assert!(n >= 16, "n must be at least 16");
+    assert!(n % 2 == 0, "n must be divisible by 2");
     
-    // Extract even and odd indexed elements
-    for i in 0..64 {
-        f_even[i] = f[i * 2];
-        f_odd[i] = f[i * 2 + 1];
+    // Check if n/2 is a power of 8
+    let half_n = n / 2;
+    let mut temp = half_n;
+    while temp % 8 == 0 {
+        temp /= 8;
+    }
+    assert_eq!(temp, 1, "n must be of the form (8^k) * 2");
+    
+    // Split input into even and odd parts
+    let mut f_even = vec![CF::zero(); half_n];
+    let mut f_odd = vec![CF::zero(); half_n];
+    
+    for i in 0..half_n {
+        f_even[i] = f[2*i];
+        f_odd[i] = f[2*i + 1];
     }
     
-    // Get the primitive 128th root of unity
+    // Get the primitive nth root of unity and its square
     let w = get_root_of_unity(n);
-    // w^2 is the 64th root of unity
-    let w_squared = w.pow(2);
+    let w_squared = w.pow(2); // This is the (n/2)th root of unity
     
-    // Perform radix-8 NTT on each half (64 elements each)
+    // Perform radix-8 NTT on each half
     let ntt_even = ntt_radix_8(f_even, w_squared);
     let ntt_odd = ntt_radix_8(f_odd, w_squared);
     
-    // Now combine using a radix-2 butterfly
+    // Combine using radix-2 butterfly operations
     let mut res = vec![CF::zero(); n];
     
     let mut w_k = CF::one();
-    for i in 0..64 {
+    for i in 0..half_n {
         // Perform radix-2 butterfly operations
         res[i] = ntt_even[i] + w_k * ntt_odd[i];
-        res[i + 64] = ntt_even[i] - w_k * ntt_odd[i];
+        res[i + half_n] = ntt_even[i] - w_k * ntt_odd[i];
         
         // Update twiddle factor
         w_k = w_k * w;
@@ -554,47 +489,109 @@ pub fn ntt_128(f: Vec<CF>) -> Vec<CF> {
     res
 }
 
-/// Perform an NTT on a 256-length input.
-/// Uses ntt_radix_8 directly for smaller transforms, followed by radix-4 butterflies.
-pub fn ntt_256(f: Vec<CF>) -> Vec<CF> {
+/// Performs an NTT on inputs whose length is of the form (8^k) * 2 using precomputed twiddle factors
+/// Uses ntt_radix_8_precomputed for the initial transforms, followed by a radix-2 combination stage
+/// @param f The coefficients of the polynomial to be transformed.
+/// @param precomputed_r8_twiddles The precomputed twiddle factors for radix-8 NTTs on half the input size.
+/// @param precomputed_stride2_twiddles Precomputed twiddle factors for the stride-2 stage.
+/// @return The transformed polynomial in evaluation form.
+pub fn ntt_8_stride_2_precomputed(
+    f: Vec<CF>,
+    precomputed_r8_twiddles: &Vec<CF>,
+    precomputed_stride2_twiddles: &Vec<CF>
+) -> Vec<CF> {
     let n = f.len();
-    assert_eq!(n, 256, "n must be 256");
-
-    // Split the input into 4 parts (each of size 64)
-    let mut f0 = vec![CF::zero(); 64];
-    let mut f1 = vec![CF::zero(); 64];
-    let mut f2 = vec![CF::zero(); 64];
-    let mut f3 = vec![CF::zero(); 64];
+    // Input length must be at least 16 and of the form (8^k) * 2
+    assert!(n >= 16, "n must be at least 16");
+    assert!(n % 2 == 0, "n must be divisible by 2");
     
-    // Extract elements with stride 4
-    for i in 0..64 {
+    // Check if n/2 is a power of 8
+    let half_n = n / 2;
+    let mut temp = half_n;
+    while temp % 8 == 0 {
+        temp /= 8;
+    }
+    assert_eq!(temp, 1, "n must be of the form (8^k) * 2");
+    
+    // Split input into even and odd parts
+    let mut f_even = vec![CF::zero(); half_n];
+    let mut f_odd = vec![CF::zero(); half_n];
+    
+    for i in 0..half_n {
+        f_even[i] = f[2*i];
+        f_odd[i] = f[2*i + 1];
+    }
+    
+    // Perform radix-8 NTT on each half using precomputed twiddles
+    let ntt_even = ntt_radix_8_precomputed(f_even, precomputed_r8_twiddles);
+    let ntt_odd = ntt_radix_8_precomputed(f_odd, precomputed_r8_twiddles);
+    
+    // Combine using radix-2 butterfly operations with precomputed twiddles
+    let mut res = vec![CF::zero(); n];
+    
+    for i in 0..half_n {
+        // Get the precomputed twiddle factor
+        let w_i = precomputed_stride2_twiddles[i];
+        
+        // Perform radix-2 butterfly operations
+        res[i] = ntt_even[i] + w_i * ntt_odd[i];
+        res[i + half_n] = ntt_even[i] - w_i * ntt_odd[i];
+    }
+    
+    res
+}
+
+/// Performs an NTT on inputs whose length is of the form (8^k) * 4
+/// Uses ntt_block_8 for the initial transforms, followed by a radix-4 combination stage
+/// @param f The coefficients of the polynomial to be transformed.
+/// @return The transformed polynomial in evaluation form.
+pub fn ntt_8_stride_4(f: Vec<CF>) -> Vec<CF> {
+    let n = f.len();
+    // Input length must be at least 32 and of the form (8^k) * 4
+    assert!(n >= 32, "n must be at least 32");
+    assert!(n % 4 == 0, "n must be divisible by 4");
+    
+    // Check if n/4 is a power of 8
+    let quarter_n = n / 4;
+    let mut temp = quarter_n;
+    while temp % 8 == 0 {
+        temp /= 8;
+    }
+    assert_eq!(temp, 1, "n must be of the form (8^k) * 4");
+    
+    // Split input into 4 parts with stride 4
+    let mut f0 = vec![CF::zero(); quarter_n];
+    let mut f1 = vec![CF::zero(); quarter_n];
+    let mut f2 = vec![CF::zero(); quarter_n];
+    let mut f3 = vec![CF::zero(); quarter_n];
+    
+    for i in 0..quarter_n {
         f0[i] = f[4*i];
         f1[i] = f[4*i + 1];
         f2[i] = f[4*i + 2];
         f3[i] = f[4*i + 3];
     }
     
-    // Get the primitive 256th root of unity and its powers
+    // Get the primitive nth root of unity and its powers
     let w = get_root_of_unity(n);
-    let w_4 = w.pow(4); // 64th root of unity
+    let w_4 = w.pow(4); // This is the (n/4)th root of unity
     
-    // Perform radix-8 NTT on each quarter (64 elements each)
+    // Perform radix-8 NTT on each quarter
     let ntt_f0 = ntt_radix_8(f0, w_4);
     let ntt_f1 = ntt_radix_8(f1, w_4);
     let ntt_f2 = ntt_radix_8(f2, w_4);
     let ntt_f3 = ntt_radix_8(f3, w_4);
     
-    // Now combine the results using radix-4 butterfly
+    // Combine using radix-4 butterfly operations
     let mut res = vec![CF::zero(); n];
     
-    for i in 0..64 {
+    for i in 0..quarter_n {
         // Calculate twiddle factors for this position
         let w_i = w.pow(i);                   // w^i
         let w_2i = w_i * w_i;                 // w^(2i)
         let w_3i = w_2i * w_i;                // w^(3i)
         
-        // Apply the radix-4 butterfly directly
-        // Extract the four values from the four 64-element NTTs
+        // Apply twiddle factors to the NTT results
         let t0 = ntt_f0[i];
         let t1 = ntt_f1[i] * w_i;
         let t2 = ntt_f2[i] * w_2i;
@@ -610,101 +607,66 @@ pub fn ntt_256(f: Vec<CF>) -> Vec<CF> {
         let a3_j = a3.mul_j();
         
         // Final combination using the radix-4 pattern
-        res[i]       = a0 + a2;
-        res[i + 64]  = a1 + a3_j;
-        res[i + 128] = a0 - a2;
-        res[i + 192] = a1 - a3_j;
+        res[i]                = a0 + a2;
+        res[i + quarter_n]    = a1 + a3_j;
+        res[i + 2 * quarter_n] = a0 - a2;
+        res[i + 3 * quarter_n] = a1 - a3_j;
     }
     
     res
 }
 
-/// Perform an NTT on a 128-length input.
-/// Uses ntt_radix_8_precomputed for smaller transforms, followed by radix-2 butterflies.
+/// Performs an NTT on inputs whose length is of the form (8^k) * 4 using precomputed twiddle factors
+/// Uses ntt_radix_8_precomputed for the initial transforms, followed by a radix-4 combination stage
 /// @param f The coefficients of the polynomial to be transformed.
-/// @param precomputed_r8_twiddles The precomputed twiddle factors for 64-point radix-8 NTTs.
-/// @param precomputed_stride2_twiddles Precomputed twiddle factors for the stride-2 stage.
-/// @return The transformed polynomial in evaluation form.
-pub fn ntt_128_precomputed(
-    f: Vec<CF>, 
-    precomputed_r8_twiddles: &Vec<CF>,
-    precomputed_stride2_twiddles: &Vec<CF>
-) -> Vec<CF> {
-    let n = f.len();
-    assert_eq!(n, 128, "n must be 128");
-
-    // Split the input into 2 parts (each of size 64)
-    let mut f_even = vec![CF::zero(); 64];
-    let mut f_odd = vec![CF::zero(); 64];
-    
-    // Extract even and odd indexed elements
-    for i in 0..64 {
-        f_even[i] = f[i * 2];
-        f_odd[i] = f[i * 2 + 1];
-    }
-    
-    // Perform radix-8 NTT on each half (64 elements each) using precomputed twiddles
-    let ntt_even = ntt_radix_8_precomputed(f_even, precomputed_r8_twiddles);
-    let ntt_odd = ntt_radix_8_precomputed(f_odd, precomputed_r8_twiddles);
-    
-    // Now combine the results using radix-2 butterfly with precomputed twiddles
-    let mut res = vec![CF::zero(); n];
-    
-    for i in 0..64 {
-        // Get precomputed twiddle factor
-        let w_i = precomputed_stride2_twiddles[i];
-        
-        // Perform radix-2 butterfly operations
-        res[i] = ntt_even[i] + w_i * ntt_odd[i];
-        res[i + 64] = ntt_even[i] - w_i * ntt_odd[i];
-    }
-    
-    res
-}
-
-/// Perform an NTT on a 256-length input.
-/// Uses ntt_radix_8_precomputed for smaller transforms, followed by radix-4 butterflies.
-/// @param f The coefficients of the polynomial to be transformed.
-/// @param precomputed_r8_twiddles The precomputed twiddle factors for radix-8 NTTs.
+/// @param precomputed_r8_twiddles The precomputed twiddle factors for radix-8 NTTs on quarter the input size.
 /// @param precomputed_stride4_twiddles Precomputed twiddle factors for the stride-4 stage.
 /// @return The transformed polynomial in evaluation form.
-pub fn ntt_256_precomputed(
-    f: Vec<CF>, 
+pub fn ntt_8_stride_4_precomputed(
+    f: Vec<CF>,
     precomputed_r8_twiddles: &Vec<CF>,
     precomputed_stride4_twiddles: &Vec<[CF; 3]>
 ) -> Vec<CF> {
     let n = f.len();
-    assert_eq!(n, 256, "n must be 256");
-
-    // Split the input into 4 parts (each of size 64)
-    let mut f0 = vec![CF::zero(); 64];
-    let mut f1 = vec![CF::zero(); 64];
-    let mut f2 = vec![CF::zero(); 64];
-    let mut f3 = vec![CF::zero(); 64];
+    // Input length must be at least 32 and of the form (8^k) * 4
+    assert!(n >= 32, "n must be at least 32");
+    assert!(n % 4 == 0, "n must be divisible by 4");
     
-    // Extract elements with stride 4
-    for i in 0..64 {
+    // Check if n/4 is a power of 8
+    let quarter_n = n / 4;
+    let mut temp = quarter_n;
+    while temp % 8 == 0 {
+        temp /= 8;
+    }
+    assert_eq!(temp, 1, "n must be of the form (8^k) * 4");
+    
+    // Split input into 4 parts with stride 4
+    let mut f0 = vec![CF::zero(); quarter_n];
+    let mut f1 = vec![CF::zero(); quarter_n];
+    let mut f2 = vec![CF::zero(); quarter_n];
+    let mut f3 = vec![CF::zero(); quarter_n];
+    
+    for i in 0..quarter_n {
         f0[i] = f[4*i];
         f1[i] = f[4*i + 1];
         f2[i] = f[4*i + 2];
         f3[i] = f[4*i + 3];
     }
     
-    // Perform radix-8 NTT on each quarter (64 elements each) using precomputed twiddles
+    // Perform radix-8 NTT on each quarter using precomputed twiddles
     let ntt_f0 = ntt_radix_8_precomputed(f0, precomputed_r8_twiddles);
     let ntt_f1 = ntt_radix_8_precomputed(f1, precomputed_r8_twiddles);
     let ntt_f2 = ntt_radix_8_precomputed(f2, precomputed_r8_twiddles);
     let ntt_f3 = ntt_radix_8_precomputed(f3, precomputed_r8_twiddles);
     
-    // Now combine the results using radix-4 butterfly with precomputed twiddles
+    // Combine using radix-4 butterfly operations with precomputed twiddles
     let mut res = vec![CF::zero(); n];
     
-    for i in 0..64 {
+    for i in 0..quarter_n {
         // Get precomputed twiddle factors for this position
         let [w_i, w_2i, w_3i] = precomputed_stride4_twiddles[i];
         
-        // Apply the radix-4 butterfly directly
-        // Extract the four values from the four 64-element NTTs
+        // Apply twiddle factors to the NTT results
         let t0 = ntt_f0[i];
         let t1 = ntt_f1[i] * w_i;
         let t2 = ntt_f2[i] * w_2i;
@@ -720,10 +682,10 @@ pub fn ntt_256_precomputed(
         let a3_j = a3.mul_j();
         
         // Final combination using the radix-4 pattern
-        res[i]       = a0 + a2;
-        res[i + 64]  = a1 + a3_j;
-        res[i + 128] = a0 - a2;
-        res[i + 192] = a1 - a3_j;
+        res[i]                = a0 + a2;
+        res[i + quarter_n]    = a1 + a3_j;
+        res[i + 2 * quarter_n] = a0 - a2;
+        res[i + 3 * quarter_n] = a1 - a3_j;
     }
     
     res
@@ -955,98 +917,132 @@ pub mod tests {
     }
 
     #[test]
-    fn test_ntt_128() {
-        let n = 128;
+    fn test_ntt_8_stride_2() {
+        // Test with 1024 = 8^3 * 2 elements
+        let n = 1024;
         let mut rng = ChaCha8Rng::seed_from_u64(0);
-        for _ in 0..1 {
+        
+        // Generate random input
+        let mut f = vec![CF::zero(); n];
+        for i in 0..n {
+            f[i] = rng.r#gen();
+        }
+        
+        // Compute NTT using our implementation
+        let res = ntt_8_stride_2(f.clone());
+        
+        // Compute NTT using naive approach for comparison
+        let naive_res = naive_ntt(f.clone());
+        
+        // Verify correctness
+        assert_eq!(res, naive_res);
+        
+        // Also test with 16 = 8^1 * 2 elements (smallest valid size)
+        let n_small = 16;
+        let mut f_small = vec![CF::zero(); n_small];
+        for i in 0..n_small {
+            f_small[i] = rng.r#gen();
+        }
+        
+        let res_small = ntt_8_stride_2(f_small.clone());
+        let naive_res_small = naive_ntt(f_small.clone());
+        
+        assert_eq!(res_small, naive_res_small);
+    }
+    
+    #[test]
+    fn test_ntt_8_stride_2_precomputed() {
+        // Test for different sizes: 16, 128, 1024
+        let sizes = [16, 128, 1024];
+        let radix = 8;
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        
+        for &n in &sizes {
+            let half_n = n / 2;
+            
+            // Precompute twiddle factors for half_n-point radix-8 NTTs
+            let whalf = get_root_of_unity(half_n);
+            let r8_twiddles = precompute_twiddles(half_n, whalf, radix);
+            
+            // Precompute twiddle factors for stride-2 combination stage
+            let stride2_twiddles = precompute_twiddles_stride2(n);
+            
+            // Generate random input
             let mut f = vec![CF::zero(); n];
             for i in 0..n {
                 f[i] = rng.r#gen();
             }
-            let res = ntt_128(f.clone());
-
+            
+            // Compute NTT using the precomputed implementation
+            let res_precomputed = ntt_8_stride_2_precomputed(f.clone(), &r8_twiddles, &stride2_twiddles);
+            
+            // Compare with regular non-precomputed implementation
+            let res_regular = ntt_8_stride_2(f.clone());
+            assert_eq!(res_precomputed, res_regular);
+            
+            // Compare with naive approach
             let naive_res = naive_ntt(f);
+            assert_eq!(res_precomputed, naive_res);
+        }
+    }
+    
+    #[test]
+    fn test_ntt_8_stride_4() {
+        // Test with 32, 256, 2048 elements (32 = 8^1 * 4, 256 = 8^2 * 4, 2048 = 8^3 * 4)
+        let sizes = [32, 256, 2048];
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        
+        for &n in &sizes {
+            // Generate random input
+            let mut f = vec![CF::zero(); n];
+            for i in 0..n {
+                f[i] = rng.r#gen();
+            }
+            
+            // Compute NTT using our implementation
+            let res = ntt_8_stride_4(f.clone());
+            
+            // Compute NTT using naive approach for comparison
+            let naive_res = naive_ntt(f.clone());
+            
+            // Verify correctness
             assert_eq!(res, naive_res);
         }
     }
     
     #[test]
-    fn test_ntt_256() {
-        let n = 256;
+    fn test_ntt_8_stride_4_precomputed() {
+        // Test with 32, 256, 2048 elements
+        let sizes = [32, 256, 2048];
+        let radix = 8;
         let mut rng = ChaCha8Rng::seed_from_u64(0);
-        for _ in 0..1 {
+        
+        for &n in &sizes {
+            let quarter_n = n / 4;
+            
+            // Precompute twiddle factors for quarter_n-point radix-8 NTTs
+            let wquarter = get_root_of_unity(quarter_n);
+            let r8_twiddles = precompute_twiddles(quarter_n, wquarter, radix);
+            
+            // Precompute twiddle factors for stride-4 combination stage
+            let stride4_twiddles = precompute_twiddles_stride4(n);
+            
+            // Generate random input
             let mut f = vec![CF::zero(); n];
             for i in 0..n {
                 f[i] = rng.r#gen();
             }
-            let res = ntt_256(f.clone());
-
+            
+            // Compute NTT using the precomputed implementation
+            let res_precomputed = ntt_8_stride_4_precomputed(f.clone(), &r8_twiddles, &stride4_twiddles);
+            
+            // Compare with regular non-precomputed implementation
+            let res_regular = ntt_8_stride_4(f.clone());
+            assert_eq!(res_precomputed, res_regular);
+            
+            // Compare with naive approach
             let naive_res = naive_ntt(f);
-            assert_eq!(res, naive_res);
-        }
-    }
-    
-    #[test]
-    fn test_ntt_128_precomputed() {
-        let n = 128;
-        let radix = 8;
-        let w64 = get_root_of_unity(64);
-        
-        // Precompute twiddle factors for 64-point radix-8 NTTs
-        let r8_twiddles = precompute_twiddles(64, w64, radix);
-        
-        // Precompute twiddle factors for stride-2 combination stage
-        let stride2_twiddles = precompute_twiddles_stride2(n);
-        
-        let mut rng = ChaCha8Rng::seed_from_u64(0);
-        for _ in 0..1 {
-            let mut f = vec![CF::zero(); n];
-            for i in 0..n {
-                f[i] = rng.r#gen();
-            }
-            
-            // Test using precomputed twiddles for both stages
-            let res_precomputed = ntt_128_precomputed(f.clone(), &r8_twiddles, &stride2_twiddles);
-            
-            // Compare with naive approach
-            let naive_res = naive_ntt(f.clone());
             assert_eq!(res_precomputed, naive_res);
-            
-            // Also compare with regular ntt_128
-            let res_regular = ntt_128(f);
-            assert_eq!(res_precomputed, res_regular);
-        }
-    }
-    
-    #[test]
-    fn test_ntt_256_precomputed() {
-        let n = 256;
-        let radix = 8;
-        let w64 = get_root_of_unity(64);
-        
-        // Precompute twiddle factors for 64-point radix-8 NTTs
-        let r8_twiddles = precompute_twiddles(64, w64, radix);
-        
-        // Precompute twiddle factors for stride-4 combination stage
-        let stride4_twiddles = precompute_twiddles_stride4(n);
-        
-        let mut rng = ChaCha8Rng::seed_from_u64(0);
-        for _ in 0..1 {
-            let mut f = vec![CF::zero(); n];
-            for i in 0..n {
-                f[i] = rng.r#gen();
-            }
-            
-            // Test using precomputed twiddles for both stages
-            let res_precomputed = ntt_256_precomputed(f.clone(), &r8_twiddles, &stride4_twiddles);
-            
-            // Compare with naive approach
-            let naive_res = naive_ntt(f.clone());
-            assert_eq!(res_precomputed, naive_res);
-            
-            // Also compare with regular ntt_256
-            let res_regular = ntt_256(f);
-            assert_eq!(res_precomputed, res_regular);
         }
     }
 }

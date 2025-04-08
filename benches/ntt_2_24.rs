@@ -44,4 +44,3 @@ criterion_group! {
     targets = bench_2_24
 }
 criterion_main!(benches);
-
