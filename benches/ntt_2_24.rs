@@ -1,6 +1,8 @@
 use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
-use cm31_ntt::ntt::{ntt_radix_8, ntt_radix_8_precomputed, get_root_of_unity, precompute_twiddles};
+use cm31_ntt::ntt::ntt;
+use cm31_ntt::ntt_utils::get_root_of_unity;
+use cm31_ntt::ntt_unoptimised::{ntt_radix_8_precomputed, precompute_twiddles};
 use cm31_ntt::cm31::CF;
 use num_traits::Zero;
 use rand::Rng;
@@ -18,21 +20,22 @@ fn bench_2_24(c: &mut Criterion) {
 
     let mut rng = ChaCha8Rng::seed_from_u64(0);
 
-    let mut f = vec![CF::zero(); n];
+    let mut arr = Box::new([CF::zero(); 16777216]);
+    let mut g = vec![CF::zero(); 16777216];
     for i in 0..n {
-        f[i] = rng.r#gen();
+        arr[i] = rng.r#gen();
+        g[i] = arr[i];
     }
 
-    group.bench_function(format!("size {n} without precomputation"), |b| {
+    group.bench_function(format!("size {n} with precomputation (in-place)"), |b| {
         b.iter(|| {
-            let f_clone = f.clone();
-            ntt_radix_8(black_box(f_clone), w);
+            ntt::<16777216>(black_box(&mut arr), &twiddles);
         })
     });
-    group.bench_function(format!("size {n} with precomputation"), |b| {
+    group.bench_function(format!("size {n} with precomputation (Vec)"), |b| {
         b.iter(|| {
-            let f_clone = f.clone();
-            ntt_radix_8_precomputed(black_box(f_clone), &twiddles);
+            let g_clone = g.clone();
+            ntt_radix_8_precomputed(black_box(g_clone), &twiddles);
         })
     });
     group.finish();

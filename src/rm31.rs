@@ -219,8 +219,8 @@ impl Add for RF {
     #[inline]
     /// The output may not be fully reduced
     fn add(self, rhs: Self) -> Self::Output {
-        let mut tmp = self.val + rhs.val;
-        let mut msb = (tmp >> 32) & 1;
+        let mut tmp: u64 = self.val + rhs.val;
+        let mut msb: u64 = (tmp >> 32) & 1;
         tmp = 2 * msb + (tmp & MASK);
         msb = (tmp >> 32) & 1;
         tmp = 2 * msb + (tmp & MASK);
@@ -241,10 +241,9 @@ impl Sub for RF {
     #[inline]
     /// The output may not be fully reduced
     fn sub(self, rhs: Self) -> Self::Output {
-        let tmp = P3 + (self.val & MASK) - (rhs.val & MASK);
+        let tmp: u64 = P3 + (self.val & MASK) - (rhs.val & MASK);
         let msb = (tmp >> 32) & 3;
-        let tmp = 2 * msb + (tmp & MASK);
-        RF { val: tmp }
+        RF { val: 2 * msb + (tmp & MASK) }
     }
 }
 

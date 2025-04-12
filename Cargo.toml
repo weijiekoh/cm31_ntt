@@ -35,3 +35,11 @@ harness = false
 [[bench]]
 name = "ntt_2_24"
 harness = false
+
+[[bench]]
+name = "sequential_ntt_block_8"
+harness = false
+
+[[bench]]
+name = "sequential_cm13_muls"
+harness = false
