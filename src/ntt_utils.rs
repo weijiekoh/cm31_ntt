@@ -4,7 +4,7 @@ use crate::cm31::{
     W_8,
 };
 use crate::rm31::RF;
-use num_traits::Zero;
+use num_traits::{Zero, One};
 use num_traits::pow::Pow;
 
 //pub(crate) fn log_8(n: usize) -> usize {
@@ -152,4 +152,89 @@ pub fn naive_intt(f: Vec<CF>) -> Vec<CF> {
     }
 
     res
+}
+
+/// Precomputes twiddle factors for a given size `n`.
+/// @param n The size of the NTT (must be a power of 2).
+/// @param w The nth root of unity
+/// @param radix The butterfly size
+/// @return A vector of precomputed twiddle factors.
+pub fn precompute_twiddles(n: usize, w: CF, radix: usize) -> Vec<CF> {
+    assert!(n.is_power_of_two(), "n must be a power of 2");
+    assert!(n >= radix, "n must be at least as large as radix");
+    assert!(radix.is_power_of_two(), "radix must be a power of 2");
+
+    let mut twiddles = Vec::new();
+    let mut current_n = n;
+    let mut current_w = w;
+    
+    while current_n > 1 {
+        let m = current_n / radix;
+        let next_w = current_w.pow(radix);
+        twiddles.push(next_w.reduce());
+        
+        for k in 0..m {
+            let base = current_w.pow(k);
+            let mut factor = CF::one();
+            for _r in 1..radix {
+                factor = factor * base;
+                twiddles.push(factor.reduce());
+            }
+        }
+        
+        current_n /= radix;
+        current_w = next_w;
+    }
+    
+    twiddles
+}
+
+/// Precomputes twiddle factors needed for a stride-2 combination stage of an NTT.
+/// @param n The size of the full NTT
+/// @return Vector of w^i factors for i in 0..n/2
+pub fn precompute_twiddles_stride2(n: usize) -> Vec<CF> {
+    assert!(n.is_power_of_two(), "n must be a power of 2");
+    assert!(n >= 2, "n must be at least 2");
+    
+    let w = get_root_of_unity(n);
+    
+    // Precompute w^i for i in 0..n/2
+    let mut w_powers = Vec::with_capacity(n/2);
+    let mut w_i = CF::one();
+    
+    for _ in 0..n/2 {
+        w_powers.push(w_i);
+        
+        // Update for next iteration
+        w_i = w_i * w;
+    }
+    
+    w_powers
+}
+
+/// Precomputes twiddle factors needed for a stride-4 combination stage of an NTT.
+/// @param n The size of the full NTT
+/// @return Vector of [w^i, w^(2i), w^(3i)] arrays for i in 0..n/4
+pub fn precompute_twiddles_stride4(n: usize) -> Vec<[CF; 3]> {
+    assert!(n.is_power_of_two(), "n must be a power of 2");
+    assert!(n >= 4, "n must be at least 4");
+    assert!(n % 4 == 0, "n must be divisible by 4");
+    
+    let w = get_root_of_unity(n);
+    
+    // Precompute w^i, w^(2i), w^(3i) for i in 0..n/4
+    let subn = n / 4;
+    let mut w_powers = Vec::with_capacity(subn);
+    let mut w_i = CF::one();
+    
+    for _ in 0..subn {
+        let w_2i = w_i * w_i;       // w^(2i)
+        let w_3i = w_2i * w_i;      // w^(3i)
+        w_powers.push([w_i, w_2i, w_3i]);
+        
+        // Update for next iteration
+        w_i = w_i * w;
+    }
+    
+    w_powers
 }

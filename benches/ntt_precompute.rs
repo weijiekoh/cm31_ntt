@@ -1,7 +1,7 @@
 use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
-use cm31_ntt::ntt_utils::get_root_of_unity;
-use cm31_ntt::ntt_unoptimised::{ntt_radix_8, ntt_radix_8_precomputed, precompute_twiddles};
+use cm31_ntt::ntt_utils::{get_root_of_unity, precompute_twiddles};
+use cm31_ntt::ntt_unoptimised::{ntt_radix_8, ntt_radix_8_precomputed};
 use cm31_ntt::cm31::CF;
 use num_traits::Zero;
 use rand::Rng;

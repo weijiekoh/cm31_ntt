@@ -1,15 +1,22 @@
 use crate::cm31::{CF, W_8};
 use num_traits::Zero;
 use crate::ntt_utils::*;
-//use crate::ntt_utils::ntt_block_8;
 
 /// A radix-8 NTT butterfly.
+/// @param read_from The slice of all coefficients of the original polynomial. In practice, it is
+///                  the scratch array that do_ntt() uses to store the intermediate results.
+/// @param write_to The slice to write the results to.
+/// @param read_indices The indices of the coefficients in read_from to read from.
+/// @param write_indices The indices of the coefficients in write_to to write to.
+/// @param wts The twiddle factors 1 - 8 (excluding the 0th twiddle factor).
 #[inline]
-pub fn ntt_block_8_in_place<const N: usize>(
-    read_from: &mut Box<[CF; N]>,
-    write_to: &mut Box<[CF; N]>,
-    read_indices: &[usize; 8],
-    write_indices: &[usize; 8],
+pub fn ntt_block_8_in_place(
+    read_from: &mut [CF],
+    write_to: &mut [CF],
+    k: usize,
+    m: usize,
+    offset: usize,
+    stride: usize,
     wt: CF,
     wt2: CF,
     wt3: CF,
@@ -22,15 +29,14 @@ pub fn ntt_block_8_in_place<const N: usize>(
     // 1st columm of black dots: a0-a8
     // 2nd columm of black dots: b0-b8
     // 3nd columm of black dots: res[0]-res[8]
-    //
-    let t0 = read_from[read_indices[0]];
-    let t1 = read_from[read_indices[1]] * wt;
-    let t2 = read_from[read_indices[2]] * wt2;
-    let t3 = read_from[read_indices[3]] * wt3;
-    let t4 = read_from[read_indices[4]] * wt4;
-    let t5 = read_from[read_indices[5]] * wt5;
-    let t6 = read_from[read_indices[6]] * wt6;
-    let t7 = read_from[read_indices[7]] * wt7;
+    let t0 = read_from[0 + 8 * k];
+    let t1 = read_from[1 + 8 * k] * wt;
+    let t2 = read_from[2 + 8 * k] * wt2;
+    let t3 = read_from[3 + 8 * k] * wt3;
+    let t4 = read_from[4 + 8 * k] * wt4;
+    let t5 = read_from[5 + 8 * k] * wt5;
+    let t6 = read_from[6 + 8 * k] * wt6;
+    let t7 = read_from[7 + 8 * k] * wt7;
 
     // Column 1
     let a0 = t0 + t4;
@@ -61,102 +67,89 @@ pub fn ntt_block_8_in_place<const N: usize>(
     let b6_w8 = b6 * W_8;
     let b7_j_w8 = b7_j * W_8;
 
-    write_to[write_indices[0]] = b0 + b4;
-    write_to[write_indices[4]] = b0 - b4;
-    write_to[write_indices[2]] = b1 + b5_j;
-    write_to[write_indices[6]] = b1 - b5_j;
-    write_to[write_indices[1]] = b2 + b6_w8;
-    write_to[write_indices[5]] = b2 - b6_w8;
-    write_to[write_indices[3]] = b3 + b7_j_w8;
-    write_to[write_indices[7]] = b3 - b7_j_w8;
+    // Note that the order of the writes is in bit-reversed order (0, 4, 2, 6, 1, 5, 3, 7).
+    write_to[offset + (k + 0 * m) * stride] = b0 + b4;
+    write_to[offset + (k + 4 * m) * stride] = b0 - b4;
+    write_to[offset + (k + 2 * m) * stride] = b1 + b5_j;
+    write_to[offset + (k + 6 * m) * stride] = b1 - b5_j;
+    write_to[offset + (k + 1 * m) * stride] = b2 + b6_w8;
+    write_to[offset + (k + 5 * m) * stride] = b2 - b6_w8;
+    write_to[offset + (k + 3 * m) * stride] = b3 + b7_j_w8;
+    write_to[offset + (k + 7 * m) * stride] = b3 - b7_j_w8;
+}
+
+
+fn do_ntt(
+    f: &mut [CF],
+    scratch: &mut [CF],
+    twiddles: &[CF],
+    offset: usize,
+    stride: usize,
+    n: usize,
+    depth: usize,
+    overall_transform_size: usize,
+) {
+    if n == 1 {
+        return;
+    }
+
+    let m = n / 8;
+
+    for r in 0..8 {
+        do_ntt(f, scratch, twiddles, offset + r * stride, stride * 8, m, depth + 1, overall_transform_size);
+    }
+
+    for i in 0..n {
+        scratch[i] = f[offset + i * stride];
+    }
+
+    let level_size = 1 + 7 * m;
+    let lvl_offset = level_offset(overall_transform_size, depth);
+    let level_twiddles = &twiddles[lvl_offset..lvl_offset + level_size];
+
+    for k in 0..m {
+        let base_idx = 1 + 7 * k;
+        let wt = level_twiddles[base_idx];
+        let wt2 = level_twiddles[base_idx + 1];
+        let wt3 = level_twiddles[base_idx + 2];
+        let wt4 = level_twiddles[base_idx + 3];
+        let wt5 = level_twiddles[base_idx + 4];
+        let wt6 = level_twiddles[base_idx + 5];
+        let wt7 = level_twiddles[base_idx + 6];
+        
+        ntt_block_8_in_place(
+            scratch.as_mut(),
+            f,
+            k,
+            m,
+            offset,
+            stride,
+            wt,
+            wt2,
+            wt3,
+            wt4,
+            wt5,
+            wt6,
+            wt7,
+        );
+    }
 }
 
 /// An in-place radix-8 NTT with precomputed twiddles.
-pub fn ntt<const N: usize>(
-    f: &mut Box<[CF; N]>,
-    twiddles: &Vec<CF>,
+/// @param f The input array to modify in-place.
+/// @param twiddles The precomputed twiddles generated using precompute_twiddles().
+pub fn ntt(
+    f: &mut [CF],
+    twiddles: &[CF],
 ) {
-    debug_assert!(N >= 8, "N must be at least 8");
-    debug_assert!(is_power_of_8(N as u32), "N must be a power of 8");
+    let n = f.len();
+    debug_assert!(n >= 8, "N must be at least 8");
+    debug_assert!(is_power_of_8(n as u32), "N must be a power of 8");
 
-    let mut scratch = Box::new([CF::zero(); N]);
+    let mut s = vec![CF::zero(); n];
 
-    fn do_ntt<const N: usize>(
-        f: &mut Box<[CF; N]>,
-        scratch: &mut Box<[CF; N]>,
-        twiddles: &Vec<CF>,
-        offset: usize,
-        stride: usize,
-        n: usize,
-        //w: CF,
-        depth: usize,
-        overall_transform_size: usize,
-    ) {
-        if n == 1 {
-            return;
-        }
-
-        let m = n / 8;
-
-        for r in 0..8 {
-            do_ntt(f, scratch, twiddles, offset + r * stride, stride * 8, m, depth + 1, overall_transform_size);
-        }
-
-        for i in 0..n {
-            scratch[i] = f[offset + i * stride];
-        }
-
-        let level_size = 1 + 7 * m;
-        let lvl_offset = level_offset(overall_transform_size, depth);
-        let level_twiddles = &twiddles[lvl_offset..lvl_offset + level_size];
-
-        for k in 0..m {
-            let base_idx = 1 + 7 * k;
-            let wt = level_twiddles[base_idx];
-            let wt2 = level_twiddles[base_idx + 1];
-            let wt3 = level_twiddles[base_idx + 2];
-            let wt4 = level_twiddles[base_idx + 3];
-            let wt5 = level_twiddles[base_idx + 4];
-            let wt6 = level_twiddles[base_idx + 5];
-            let wt7 = level_twiddles[base_idx + 6];
-
-            ntt_block_8_in_place(
-                scratch,
-                f,
-                &[
-                    0 + 8 * k,
-                    1 + 8 * k,
-                    2 + 8 * k,
-                    3 + 8 * k,
-                    4 + 8 * k,
-                    5 + 8 * k,
-                    6 + 8 * k,
-                    7 + 8 * k
-                ],
-                &[
-                    offset + (k + 0 * m) * stride,
-                    offset + (k + 1 * m) * stride,
-                    offset + (k + 2 * m) * stride,
-                    offset + (k + 3 * m) * stride,
-                    offset + (k + 4 * m) * stride,
-                    offset + (k + 5 * m) * stride,
-                    offset + (k + 6 * m) * stride,
-                    offset + (k + 7 * m) * stride
-                ],
-                wt,
-                wt2,
-                wt3,
-                wt4,
-                wt5,
-                wt6,
-                wt7,
-            );
-        }
-    }
-
-    do_ntt(&mut *f, &mut scratch, twiddles, 0, 1, N, /*w,*/ 0, N);
+    do_ntt(f, &mut s, &twiddles, 0, 1, n, 0, n);
 }
-
 
 #[cfg(test)]
 pub mod tests {
@@ -177,15 +170,15 @@ pub mod tests {
         let radix = 8;
         let twiddles = precompute_twiddles(n, w, radix);
 
-        for _ in 0..1 {
-            let mut f = Box::new([CF::zero(); 512]);
+        for _ in 0..4 {
+            let mut f = vec![CF::zero(); 512];
             for i in 0..n {
                 f[i] = rng.r#gen();
             }
 
             let expected = ntt_radix_8(f.clone().to_vec(), w);
 
-            ntt::<512>(&mut f, &twiddles);
+            ntt(&mut f, &twiddles);
 
             let is_correct = f.to_vec() == expected;
             assert!(is_correct);
