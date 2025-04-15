@@ -1,8 +1,8 @@
 use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
-use cm31_ntt::ntt::ntt;
+use cm31_ntt::ntt_optimisation_attempt::ntt_radix_8_in_place;
 use cm31_ntt::ntt_utils::{get_root_of_unity, precompute_twiddles};
-use cm31_ntt::ntt_unoptimised::ntt_radix_8_precomputed;
+use cm31_ntt::ntt::ntt_radix_8_precomputed;
 use cm31_ntt::cm31::CF;
 use num_traits::Zero;
 use rand::Rng;
@@ -29,7 +29,7 @@ fn bench_2_24(c: &mut Criterion) {
 
     group.bench_function(format!("size {n} with precomputation (in-place)"), |b| {
         b.iter(|| {
-            ntt(black_box(&mut arr), &twiddles);
+            ntt_radix_8_in_place(black_box(&mut arr), &twiddles);
         })
     });
     group.bench_function(format!("size {n} with precomputation (Vec)"), |b| {
